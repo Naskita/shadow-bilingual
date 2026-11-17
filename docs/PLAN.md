@@ -215,6 +215,29 @@ Enter 与点击发送按钮都汇入 `facade.submit`，但插件拿不到 facade
 未注册的 `/api/*` 都回 `401 unauthorized`，单看这条无法区分「插件没加载」和
 「路径写错」。
 
+3. **`plugin_manager remove_bundle` + `install_bundle` 也不会重新求值宿主半。**
+   实测：先 remove（profile 里真的摘掉了），再 install（pnpm 重新 link、锁文件更新），
+   路由仍在应答，但返回的 JSON 里**依然没有新字段**。
+   判据：`/config` 返回体里缺 `localLanguage`，而源码 `publicConfig()` 明明有。
+   结论：只有**重启进程**这条路。
+
+4. **`pgrep -f 'dsh-desktop-host/lib/index.js'` 在本机匹配不到宿主。**
+   进程命令行极长且路径含空格，`pgrep` 返回空。必须用
+   `ps ax -o pid=,command= | grep 'dsh-desktop-host/lib/index.js' | grep -v grep`。
+
+5. **HTTP 端口每次启动都会变**（历史值：55443 → 65285）。重启脚本不能写死端口，
+   要从宿主进程的监听 socket 现取：
+   `lsof -nP -iTCP -sTCP:LISTEN -a -p <pid> | awk 'NR>1{split($9,a,":"); print a[n]}'`。
+   `scripts/restart-dsh.sh` 已改成这样，并在报告里带上 `hasLocalLanguage` 作为
+   「新代码是否真的跑起来」的判据。
+
+6. **`credentials` 服务不能在 `apply()` 里取一次就缓存。**
+   插件常常是在应用启动**之后**才被 `plugin_manager` 挂载的，那一刻凭据服务未必
+   就绪。早先缓存了 `null`，结果 `/health` 永远 `hasKey:false`、翻译整个不可用，
+   而界面上什么都不提示（设置页只显示「还没配置 Key」）。
+   现在 `resolveKey()` 每次经 `credentialsService()` 现取，并加了回归测试
+   `credentials service is looked up per call, not cached at apply()`。
+
 ## 未决问题
 
 - 换设备/清 localStorage 后，旧会话没有 ZH 行——可接受，但用户应知情。
