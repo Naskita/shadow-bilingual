@@ -164,6 +164,30 @@ Enter 与点击发送按钮都汇入 `facade.submit`，但插件拿不到 facade
 测试：`/tmp/test-ghost.cjs`（8 项）覆盖 ghost 插入、显示英文、纯英文不显示、
 清空移除、长草稿可用、重译时不闪空。
 
+## D9：改名 Shadow Bilingual v1.0.0 + 独立仓库（2026-11-17）
+
+决定与理由：
+- 名字：**Shadow Bilingual**。用户提名并经确认；「Shadow」正是输入框里那层影子译文的
+  核心机制，比原来的 dsh-bilingual-en 更能说明这个定制版做了什么。
+- 版本：`1.0.0`（原 0.1.0）。功能已完整且用户实测确认可用，不再是 0.x 实验态。
+- 全量改名：目录 `shadow-bilingual/`、包名、插件 id、路由 `/api/shadow-bilingual`、
+  localStorage 键、CSS 前缀 `dsb-` → `sbp-`、全局单例 `__shadowBilingualInterceptor`。
+- 仓库：`https://github.com/Naskita/shadow-bilingual`（**私有**），首次提交 `ad52818`。
+
+改名必须一起处理的三处联动（漏一处插件就加载不出来）：
+1. `<DSH_HOME>/profiles/desktop/node_modules/shadow-bilingual` 符号链接。
+2. `profiles/desktop/package.json` 的 `dependencies` + `dsh.profile.bundles`；
+   **bundles 里是裸包名**，dsh-web 的客户端模块扫描只认裸包名行。
+3. `profiles/desktop/pnpm-lock.yaml` 的 importer 条目（手改，未跑 pnpm install）。
+
+数据迁移（改名后不能让历史白丢）：`loadCache()` / `readEnabled()` /
+`readSendTranslation()` / `sentMap()` 都会在读到新键为空时回落到旧键并搬过来，
+旧键为 `dsh-bilingual-en.*`。
+
+教训：批量改名时把 `Hemuchuan/dsh-bilingual` 这个**上游仓库 URL** 也一起替换了，
+导致 README 与 PLAN 的归属说明指向不存在的仓库。已手工修回。
+改名脚本要先排除 URL、许可证与致谢段落。
+
 ## 未决问题
 
 - 换设备/清 localStorage 后，旧会话没有 ZH 行——可接受，但用户应知情。

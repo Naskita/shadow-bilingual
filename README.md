@@ -1,6 +1,6 @@
 # Shadow Bilingual
 
-个人使用的 DSH 插件：**对话全英文 + 界面双语**。
+个人使用的 DSH 插件：**对话全英文 + 界面双语**。版本 `1.0.0`。
 
 从 [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) fork 后改造的个人版，
 仅本机使用。上游的助手双语渲染沿用，其余为本地定制。
