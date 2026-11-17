@@ -28,7 +28,7 @@ selectable display language.
 | --- | --- | --- |
 | Assistant replies: English body + local-language line underneath | `conversation.chat.node` (key `assistant-step`) | upstream |
 | User messages: English is what gets sent; local-language original shown under the bubble | `conversation.user.text.node` (key `text`) | this fork |
-| "Send translation" checkbox, checked by default | `conversation.composer.dock` | this fork |
+| "Send translation" checkbox, checked by default — now inside the composer tool row | `conversation.input.left` id `shadow-bilingual-send` | this fork |
 | Steering box (`dsh-steer-note`) text is translated before sending | `textarea.dsh-steer-note-input` | this fork |
 | Queued messages (sent while the agent is busy) are translated in place | `conversation.input.dock` id `shadow-bilingual-queue` | this fork |
 | Model always answers in English | system prompt section `bilingual:response-language` (order 9500) | this fork |

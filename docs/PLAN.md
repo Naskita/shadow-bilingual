@@ -626,3 +626,21 @@ node tests/send-path.cjs lib/client.js
 - `docs/preview.png`（1200×931）：对话区，用户气泡英文（实发）+ `ZH` + 中文原文；助手两段英文 + 各自中文对照。
 - `screenshots.json` 顺序改为 `["docs/preview-input.png", "docs/preview.png"]`，README 两半都加了
   “Send side / Display side” 说明，先展示发送侧。
+
+## D20：「发送译文」搬进输入框工具行，状态条只留一个短标记（2026-11-18 凌晨）
+
+**用户反馈**（m02542）：勾选框应该属于输入框本身，放在下方菜单栏里截图不好讲；状态可以留在菜单栏，
+但要用一个短状态表示，菜单栏位置很宝贵。
+
+**做法**：
+
+- 新增槽位注册 `conversation.input.left` id `shadow-bilingual-send` order 50，`SendToggle` 组件
+  与 `+`、权限、推理档位同一行；样式 `.sbp-send-toggle`（12px、12×12 勾选框、不换行）。
+- `conversation.composer.dock` 的 `LiveTranslationPanel` 只负责两件事：驱动影子译文的防抖刷新 /
+  ghost 渲染，以及渲染一个短状态 `.sbp-en-status`：`EN`（就绪）、`···`（翻译中）、`!`（失败）。
+  详细说明改成 `title` 提示，不再占位。
+- 顺手删掉面板里已不再使用的 `checked/setChecked`，避免 `checked is not defined` 这类残留。
+- 测试：`tests/client.test.mjs` 期望槽位列表补 `conversation.input.left`（6 → 7 项）。
+
+**验证**：`bash tests/run-all.sh` → build + 25 单测 + 发送链路 24/24 + 槽位 7 项全过；
+截图 `docs/preview-input.png` 重拍（输入框内勾选框 + 灰色英文影子），版本 1.0.4。

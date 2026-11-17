@@ -92,6 +92,7 @@ test('client bundle loads and registers every slot', () => {
     'conversation.chat.node',
     'conversation.composer.dock',
     'conversation.input.dock',
+    'conversation.input.left',
     'conversation.session.header.actions',
     'conversation.user.text.node',
     'settings.section',

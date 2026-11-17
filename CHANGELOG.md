@@ -1,4 +1,14 @@
 # Changelog
+## [1.0.4] — 2026-11-18
+
+### Changed
+
+- The **发送译文** switch moved into the composer tool row, next to the permission and reasoning
+  controls, so it reads as part of the input box instead of a separate strip below it.
+- The dock under the composer now carries only a one-glyph status: `EN` when the English version is
+  ready, `···` while it is being produced, `!` when it failed and the original will be sent.
+- `docs/preview-input.png` re-shot with the switch inside the box.
+
 
 All notable changes to Shadow Bilingual are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
