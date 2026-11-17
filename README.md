@@ -187,10 +187,15 @@ Individually:
 
 ```bash
 node build.mjs                                        # template → lib/client.js
-node --test tests/*.test.mjs                          # 22 unit tests (client + host + markdown)
+node --test tests/*.test.mjs                          # 25 unit tests (client + host + markdown)
 node tests/send-path.cjs lib/client.js                # 24 send-path assertions
 node tests/list-slots.cjs lib/client.js               # which slots got registered
+node scripts/check-languages.mjs                      # live host: probe all 18 display languages
 ```
+
+`check-languages.mjs` talks to the running host (it finds the port itself) and fails loudly when a
+display language comes back untranslated — the failure mode that unit tests cannot see. It needs the
+app running and a Key configured; run it after any change to the host half.
 
 `send-path.cjs` covers: one Enter submits once, repeated Enter while a translation is in flight
 does not duplicate, failure sends the original, a stalled translation times out and sends the
@@ -390,10 +395,14 @@ plugin_manager install_bundle target=/Users/naskita/Documents/deepseek-harness/d
 
 ```bash
 node build.mjs                                        # 模板 → lib/client.js
-node --test tests/*.test.mjs                          # 22 项单测（client + host + markdown）
+node --test tests/*.test.mjs                          # 25 项单测（client + host + markdown）
 node tests/send-path.cjs lib/client.js                # 24 项发送链路断言
 node tests/list-slots.cjs lib/client.js               # 打印注册了哪些槽位
+node scripts/check-languages.mjs                      # 对运行中的宿主逐个显示语言探一次
 ```
+
+`check-languages.mjs` 直接问正在运行的宿主（端口自己找），某种显示语言拿回来的还是原文就直接
+报错——这是单测看不见的失败模式。需要应用开着、Key 已填；改完宿主侧代码跑一次。
 
 `send-path.cjs` 覆盖：单次 Enter 只提交一次、翻译在飞时连按不重复、翻译失败发原文、
 翻译挂起超时发原文、超时后锁已释放、译文与草稿完全相同（宿主误判「已是英文」）时闸门放行
