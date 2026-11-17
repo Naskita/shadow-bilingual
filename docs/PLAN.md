@@ -245,10 +245,10 @@ Enter 与点击发送按钮都汇入 `facade.submit`，但插件拿不到 facade
 
 ## 测试
 
-`/tmp/test-send-path.cjs`（不碰真实界面，直接驱动拦截器判定）：
+`tests/send-path.cjs`（不碰真实界面，直接驱动拦截器判定）：
 
 ```
-node /tmp/test-send-path.cjs lib/client.js
+node tests/send-path.cjs lib/client.js
 ```
 
 22 项断言，覆盖：译文未就绪时先不提交、译文就绪后自动发一次、连按只发一次、
@@ -259,7 +259,7 @@ node /tmp/test-send-path.cjs lib/client.js
 注意：影子翻译**挂起**时不会永远挡住发送——`SHADOW_TIMEOUT_MS`（15s）到点退回
 `idle` 并清掉待发意图，原文可以正常发出。
 
-`/tmp/list-slots.cjs`：干跑 bundle，打印注册的全部槽位与监听器数量，改完先跑它。
+`tests/list-slots.cjs`：干跑 bundle，打印注册的全部槽位与监听器数量，改完先跑它。
 
 ## D11. 本地显示语言可选（AI 侧固定英文）
 

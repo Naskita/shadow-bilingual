@@ -120,16 +120,22 @@ plugin_manager install_bundle target=/Users/naskita/Documents/deepseek-harness/d
 
 ## Self-check
 
-Two scripts that never touch the real UI — run them after changing the bundle, it is far faster than
-poking the interface:
+Everything below runs without touching the real UI — far faster than poking the interface:
 
 ```bash
-node /tmp/list-slots.cjs lib/client.js                      # print every registered slot and listener
-node /tmp/test-send-path.cjs lib/client.js                  # 23 send-path assertions
-node --test tests/                                          # 14 unit tests (client + host + markdown)
+./tests/run-all.sh        # build + unit tests + send-path assertions + slot listing
 ```
 
-`test-send-path.cjs` covers: one Enter submits once, repeated Enter while a translation is in flight
+Individually:
+
+```bash
+node build.mjs                                        # template → lib/client.js
+node --test tests/*.test.mjs                          # 15 unit tests (client + host + markdown)
+node tests/send-path.cjs lib/client.js                # 22 send-path assertions
+node tests/list-slots.cjs lib/client.js               # which slots got registered
+```
+
+`send-path.cjs` covers: one Enter submits once, repeated Enter while a translation is in flight
 does not duplicate, failure sends the original, a stalled translation times out and sends the
 original, the lock is released after the timeout, a Chinese queue row is rewritten to English, rows
 with attachments are left alone, a failed queue translation keeps the original, the same row is not
@@ -251,15 +257,22 @@ plugin_manager install_bundle target=/Users/naskita/Documents/deepseek-harness/d
 
 ## 自检
 
-不碰界面的脚本，改完 bundle 先跑它们，比在界面上试错快：
+下面这些都**不碰真实界面**，改完 bundle 跑一遍，比在界面上试错快得多：
 
 ```bash
-node /tmp/list-slots.cjs lib/client.js                      # 打印注册的全部槽位与监听器
-node /tmp/test-send-path.cjs lib/client.js                  # 23 项发送链路断言
-node --test tests/                                          # 14 项单测（client + host + markdown）
+./tests/run-all.sh        # 构建 + 单测 + 发送链路断言 + 槽位清单，一次跑完
 ```
 
-`test-send-path.cjs` 覆盖：单次 Enter 只提交一次、翻译在飞时连按不重复、翻译失败发原文、
+分开跑：
+
+```bash
+node build.mjs                                        # 模板 → lib/client.js
+node --test tests/*.test.mjs                          # 15 项单测（client + host + markdown）
+node tests/send-path.cjs lib/client.js                # 22 项发送链路断言
+node tests/list-slots.cjs lib/client.js               # 打印注册了哪些槽位
+```
+
+`send-path.cjs` 覆盖：单次 Enter 只提交一次、翻译在飞时连按不重复、翻译失败发原文、
 翻译挂起超时发原文、超时后锁已释放、队列中文行被译成英文、带附件行不动、
 队列翻译失败保留原文、同一行不重复翻译、document 监听器唯一。
 
