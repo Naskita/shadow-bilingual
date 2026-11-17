@@ -617,3 +617,12 @@ node tests/send-path.cjs lib/client.js
 **结果**：`docs/preview.png`（1200×931）来自会话 `Remote work focus and interru…`：
 用户气泡 = 英文（实际发出的）+ `ZH` 徽章 + 中文原文；助手两条英文要点下方各有中文对照；
 顶部 `影译 v1.0.3 ON`。无侧栏、无费用、无账号信息。
+
+**补充（用户指出）**：上游本来就有「助手英文正文 + 中文对照」，所以单看对话截图区分不出我们的东西。
+真正属于这个 fork 的是**发送侧**：composer 里中文草稿下方那行灰色英文影子，发出去的就是它。
+因此截图拆成两张，并且先放发送侧：
+
+- `docs/preview-input.png`（1240×213）：composer 卡片，中文草稿 + 灰色英文影子 + 模型选择器。
+- `docs/preview.png`（1200×931）：对话区，用户气泡英文（实发）+ `ZH` + 中文原文；助手两段英文 + 各自中文对照。
+- `screenshots.json` 顺序改为 `["docs/preview-input.png", "docs/preview.png"]`，README 两半都加了
+  “Send side / Display side” 说明，先展示发送侧。

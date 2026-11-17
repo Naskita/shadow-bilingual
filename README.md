@@ -7,7 +7,13 @@
 A DSH plugin: **English-only conversation with the model, bilingual display for you.**
 Chinese name: **影译**. Version [`1.0.3`](CHANGELOG.md).
 
-![Shadow Bilingual in the DSH desktop app — assistant replies keep the English text and gain a local-language translation below each block, and the 影译 toggle sits in the session header.](docs/preview.png)
+**Send side — the part upstream does not have.** You type your own language; the grey line under it is the English that will actually be sent, and the model never sees your language.
+
+![Shadow input in the composer: a Chinese draft with the grey English line that will be sent underneath it.](docs/preview-input.png)
+
+**Display side.** Replies stay English and gain a translation in your chosen language, one block at a time; the `影译` toggle sits in the session header.
+
+![Shadow Bilingual in the DSH desktop app — the user message shows the English that was sent plus the original, and each assistant block keeps the English text with a local-language line underneath.](docs/preview.png)
 
 Forked from [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) and reworked around
 the *send* path: upstream keeps the assistant-side bilingual rendering, and this fork adds English

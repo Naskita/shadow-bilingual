@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [1.0.3] — 2026-11-18
 
+- Documentation screenshots are now real UI captures from a neutral demo conversation: the composer with the English shadow line (`docs/preview-input.png`) and the bilingual transcript (`docs/preview.png`).
+
 The display language now really works for every language the plugin offers, and the plugin finally
 has its own name, icon and screenshot.
 
