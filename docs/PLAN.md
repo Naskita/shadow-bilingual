@@ -334,6 +334,14 @@ node tests/send-path.cjs lib/client.js
     `translationLooksValid`；设置页加 18 语种下拉框；宿主加 `localLanguage` 配置与
     多语言 `SYSTEM_PROMPT`。
 16. README 改写成中英双语（英文在前、中文在后）。
+17. **助手侧中文对照恢复渲染**（D14）：`decorate()` 兜底查不带目标语言后缀的键，
+    `translationsFor()` 同时写两份键——此前缓存命中了却一个字都不渲染。
+18. **混排段落按主体语言判定**（D13）：客户端改用英语虚词命中，宿主改占比 0.3，
+    不再「出现一个汉字就整段判中文」。
+19. **译文不可用按失败处理**（D16）：`shadow.error` 落值 + 宿主 `looksEnglish()`，
+    「中文夹英文标识符」既不会被误判成英文，也不会再被发送闸门永久吞掉。
+20. 删除会 `kill` 宿主的 `scripts/restart-dsh.sh`，换成只读的 `scripts/apply-changes.sh`
+    （D15）；发布 `1.0.1`，新增 `CHANGELOG.md` 并同步 README 计数（22 单测 / 24 发送链路）。
 
 ## D12：原文已是目标语言时不再请求模型（2026-11-17 晚）
 
