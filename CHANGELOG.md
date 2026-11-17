@@ -4,6 +4,22 @@ All notable changes to Shadow Bilingual are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] — 2026-11-18
+
+Packaging release so the repository can be listed in the DSH plugin directory. Behaviour is identical
+to 1.0.1; nothing in the translation path changed.
+
+### Changed
+
+- `package.json` now declares `repository`, `bugs` and `homepage` — the plugin directory reads the
+  GitHub↔npm mapping from those fields.
+- Removed `peerDependencies.react`. React comes from the DSH client runtime, never from npm; the peer
+  declaration only made every install print `missing peer react`.
+- `docs/preview.png` redrawn: the old picture still said `dsh-bilingual` and showed the pre-fork
+  layout (Chinese body with English underneath), which is the opposite of what this fork does.
+- README gained an **Install** section with the `dsh plugin --profile desktop add github:...`
+  command and the "quit normally, then reopen" step the host half needs.
+
 ## [1.0.1] — 2026-11-18
 
 A correctness release: bilingual subtitles reach the assistant side again, mixed-language paragraphs

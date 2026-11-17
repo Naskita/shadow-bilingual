@@ -2,12 +2,13 @@
 
 [中文](#中文) · English
 
-A personal DSH plugin: **English-only conversation with the model, bilingual display for you.**
-Version [`1.0.1`](CHANGELOG.md).
+A DSH plugin: **English-only conversation with the model, bilingual display for you.**
+Version [`1.0.2`](CHANGELOG.md).
 
-Forked from [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) and reworked as a private,
-local-only build. The upstream assistant-side bilingual rendering is kept; everything else is local
-customization.
+Forked from [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) and reworked around
+the *send* path: upstream keeps the assistant-side bilingual rendering, and this fork adds English
+shadow input, English-only sending across the composer / steering box / message queue, and a
+selectable display language.
 
 ---
 
@@ -38,6 +39,29 @@ Supported display languages: `zh` (Simplified Chinese), `zh-TW` (Traditional), `
 
 Translations are cached **per target language**. Switching the display language never reuses the
 previous language's wording; it re-translates new paragraphs as needed.
+
+## Install
+
+From the DSH plugin market, or from a terminal:
+
+```bash
+# desktop app (profile "desktop")
+dsh plugin --profile desktop add github:Naskita/shadow-bilingual
+
+# hosted web build (profile "web")
+dsh plugin --profile web add github:Naskita/shadow-bilingual
+```
+
+The install writes the package and its bundle patch row; it does **not** start the plugin. Quit the
+app normally (`⌘Q`) and reopen — the host half is imported at process start, and the client half
+loads with the window.
+
+Then open **Settings → Shadow Bilingual** and paste a DeepSeek API key, or export `DEEPSEEK_API_KEY`
+(the plugin also reuses a key DSH already stores). Without a key the plugin stays installed but every
+translation fails, and text is sent as-is.
+
+There is no npm package and no dependency to install: the host half talks to the app over
+`/api/shadow-bilingual/*`, and the client half gets React from the DSH client runtime.
 
 ## How it works (read this before changing anything)
 
@@ -181,6 +205,9 @@ agent-desktop snapshot --window-id <DSH window id> --timeout-ms 25000
 
 See [CHANGELOG.md](CHANGELOG.md). Recent releases:
 
+- **1.0.2** (2026-11-18) — packaging only: `repository`/`bugs`/`homepage` in the manifest, the
+  bogus `react` peer dependency removed (React comes from the DSH client runtime), an accurate
+  preview image, and an **Install** section for `dsh plugin --profile desktop add github:...`.
 - **1.0.1** (2026-11-18) — assistant subtitles render again (decorate key mismatch), mixed-language
   paragraphs are translated instead of skipped, host "already English" detection uses English
   function words, and the send gate no longer swallows a draft when a translation comes back
@@ -194,11 +221,12 @@ See [CHANGELOG.md](CHANGELOG.md). Recent releases:
 
 # 中文说明
 
-个人使用的 DSH 插件：**跟模型对话全英文，界面显示双语**。
-版本 [`1.0.1`](CHANGELOG.md)。
+DSH 插件：**跟模型对话全英文，界面显示双语**。
+版本 [`1.0.2`](CHANGELOG.md)。
 
-从 [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) fork 后改造的个人版，仅本机使用。
-助手侧的双语渲染沿用上游，其余为本地定制。
+从 [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) fork 后围绕**发送链路**改造：
+助手侧的双语渲染沿用上游，本 fork 增加了英文影子输入、输入框/插话框/消息队列三条路径的全英文发送，
+以及可选的本地显示语言。
 
 ## 它做什么
 
@@ -226,6 +254,27 @@ See [CHANGELOG.md](CHANGELOG.md). Recent releases:
 `tr` Türkçe、`ar` العربية、`hi` हिन्दी、`th` ไทย、`vi` Tiếng Việt、`id` Bahasa Indonesia。
 
 译文**按目标语言分别缓存**。换语种不会读到上一种语言的措辞，新段落按新语言重译。
+
+## 安装
+
+从 DSH 插件市场安装，或在终端里：
+
+```bash
+# 桌面版（profile 名 desktop）
+dsh plugin --profile desktop add github:Naskita/shadow-bilingual
+
+# 网页版 dsh web（profile 名 web）
+dsh plugin --profile web add github:Naskita/shadow-bilingual
+```
+
+安装只写入包与 bundle 补丁行，**不会启动插件**。正常退出（`⌘Q`）再重开：宿主那一半在进程启动时
+被 import，客户端那一半随后随窗口加载。
+
+然后打开 **设置 → 双语**，粘贴 DeepSeek API Key；也可以 export `DEEPSEEK_API_KEY`
+（插件也会复用 DSH 已保存的 Key）。没有 Key 时插件仍在，但每次翻译都会失败，文本按原文发送。
+
+本插件不发 npm 包，也不需要安装任何依赖：宿主侧走 `/api/shadow-bilingual/*`，客户端侧从 DSH
+运行时拿 React。
 
 ## 关键实现（改之前先读这段）
 
@@ -353,6 +402,9 @@ agent-desktop snapshot --window-id <DSH 窗口 id> --timeout-ms 25000
 
 见 [CHANGELOG.md](CHANGELOG.md)。最近两个版本：
 
+- **1.0.2**（2026-11-18）——只改打包：清单补上 `repository`/`bugs`/`homepage`，删掉多余的
+  `react` peer（React 由 DSH 客户端运行时提供），换成与当前界面一致的示意图，README 增加
+  面向使用者的「安装」小节（`dsh plugin --profile desktop add github:...`）。
 - **1.0.1**（2026-11-18）——助手侧中文对照恢复渲染（decorate 的键没带目标语言）；
   混排段落不再因为出现一个汉字就被整段跳过；宿主判「已经是英文」改用英语虚词；
   译文不可用时发送闸门不再永久吞掉草稿。

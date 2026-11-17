@@ -526,3 +526,35 @@ node tests/send-path.cjs lib/client.js
 **生效方式**：客户端改动热载；宿主改动需要正常退出重开（⌘Q 后重开，**不要** kill）。
 在重开之前，客户端修复已经能让这句发出去（第一次 Enter 后提示「翻译失败，将发送原文」，
 再按一次即发原文）。
+
+## D17：仓库整理成可被 awesome-dsh-plugin 收录的状态（2026-11-18 凌晨）
+
+**背景**：用户想把本插件提交到 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)。
+按它的 `contributing.md`，仓库侧要求是：`package.json` 声明 `dsh.bundle`、仓库根有 `cordis.patch.yml`、
+有真实代码、仓库创建满 1 天、加 topic `dsh-plugin`、描述与实际功能一致；官方 `@deepseek-ai/*`
+用带预发布分支的 peer 范围。列表条目只需一个 `data/plugins/<owner>__<repo>.yml`。
+
+**做了什么**：
+1. `package.json` 补 `repository` / `bugs` / `homepage`（npm↔GitHub 映射靠它们），版本 1.0.1 → 1.0.2。
+2. **删掉 `peerDependencies.react`**。React 由 DSH 客户端运行时提供（profile 里根本没装 react，插件
+   照样能跑），官方客户端插件也只在 devDependencies 里放 react。留着 peer 的唯一效果是每次安装都打印
+   `missing peer react`。删掉后 `pnpm peers check` 变成 `No peer dependency issues found`。
+3. 重画 `docs/preview.png`：旧图写着 `dsh-bilingual`、画的是**上游布局**（中文正文下补英文），与本
+   fork 的实际行为（英文正文下补中文、输入框中文草稿下补英文影子）相反。
+4. README 增加面向使用者的 **Install** / **安装** 小节：`dsh plugin --profile desktop add
+   github:Naskita/shadow-bilingual`（网页版用 `--profile web`），装完正常退出再重开。
+5. GitHub 仓库加 topics：`dsh-plugin`、`dsh`、`deepseek-harness`、`bilingual`、`translation`。
+
+**验证**：
+- 一次性 profile 实测商店生成的命令：`DSH_HOME=/tmp/dsh-probe-home dsh plugin --profile probe add
+  github:Naskita/shadow-bilingual` → 装上 `shadow-bilingual 1.0.1`，`dsh.profile.bundles` 里出现
+  `shadow-bilingual`，说明 `dsh.bundle` 被正确识别。
+- 删掉 react peer 后用本地 tarball 再装一次：`No peer dependency issues found`。
+- `npm pack` 内容 12 个文件（lib / cordis.patch.yml / README / CHANGELOG / docs）。
+
+**未决**：
+- **仓库创建于 2026-11-17T18:15Z 左右，门禁要求满 1 天**，即 2026-11-18T09:31Z（本地 17:31）之后
+  提交才会通过 CI；被挡是快照结论，之后自动重跑，不需要关掉重开 PR。
+- 上游 `Hemuchuan/dsh-bilingual` **已经在列表里**，reviewer 有理由问「这是不是重复」。条目描述必须
+  突出差异：本 fork 改的是**发送侧**（英文影子输入 + 三条路径全英文发送 + 本地语言对照可选），
+  上游只有助手侧的双语渲染。

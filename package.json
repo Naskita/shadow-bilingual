@@ -1,6 +1,6 @@
 {
   "name": "shadow-bilingual",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "description": "影子双语输入 + 全英文对话：输入框实时显示英文影子译文，发送时按「发送译文」决定发译文还是原文；助手回复英文正文 + 中文对照。Shadow bilingual input for the DeepSeek Harness desktop app.",
   "keywords": [
@@ -15,6 +15,14 @@
     "双语",
     "英译"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Naskita/shadow-bilingual.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Naskita/shadow-bilingual/issues"
+  },
+  "homepage": "https://github.com/Naskita/shadow-bilingual#readme",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
@@ -32,9 +40,6 @@
   "engines": {
     "node": ">=20",
     "dsh": ">=0.2.1-rc.1 <0.3.0-0"
-  },
-  "peerDependencies": {
-    "react": "^18.2.0"
   },
   "dsh": {
     "bundle": {
