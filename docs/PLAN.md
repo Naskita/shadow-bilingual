@@ -238,6 +238,46 @@ node /tmp/test-send-path.cjs lib/client.js
 
 `/tmp/list-slots.cjs`：干跑 bundle，打印注册的全部槽位与监听器数量，改完先跑它。
 
+## D11. 本地显示语言可选（AI 侧固定英文）
+
+**需求（m01815）**：仓库做成中英双语；插件可选「本地语种」，AI 语种固定英语（对模型最友好）；
+本地语种要多一些选择，并放进插件设置项。
+
+**语言模型**（两套语言，互不影响）：
+
+| 侧 | 语言 | 用途 |
+| --- | --- | --- |
+| AI / 模型 | 固定 `en` | 输入框、插话框、队列里的非英文内容，发送前一律换成英文 |
+| 显示 / 用户 | 可选（18 种） | 助手英文正文下方补该语言对照；用户气泡下方也用它 |
+
+**关键设计**：
+
+1. **`translationTarget(unit, options)` 变成两模式**：`{mode:'english'}` 只产出 `target:'en'`
+   （发送路径）；`{mode:'local'}` 产出 `target: localLanguage`（显示路径）。
+   原来的 `source === 'zh' ? 'en' : 'zh'` 二元判断彻底删掉。
+2. **`unitKey(unit, target)` 带目标语言**：同一段英文在本地语种=日文和=中文下是两条不同译文。
+   不带 target 时退化为旧行为，老缓存不会因为升级全部失效。
+3. **`languageOf()` 扩成书写系统探测**：假名→ja、谚文→ko、汉字→zh、西里尔→ru、阿拉伯→ar、
+   希伯来→he、天城文→hi、泰文→th，最后才是拉丁→en。
+4. **`detectLatinLanguage()`**：es/fr/de/pt/it/nl/pl/tr/vi/id 之间只能靠高频虚词区分
+   （`¿¡`→es、`ß`→de、`ãõ`→pt、越南语声调→vi 是强信号）。**只用来回答「这段是不是英语」**，
+   判错代价只是一次多余翻译请求，模型会原样返回，不会被采用。
+5. **`needsEnglish(text, localLanguage)`** 取代全项目原本的 `hasCjk()` 作为发送闸门。
+   这是本轮最容易漏的地方：`shadowWanted`、`interceptSteerSend`、`installSubmitInterceptor`
+   里 6 处 gate、`QueueTranslator`、`translateDraft` 入口，全部换掉了。
+6. **校验按目标语言的书写系统**：`translationLooksValid()` 在客户端、`validTranslationText()`
+   在宿主各有一份实现（客户端不能 import 宿主模块）。中文目标要求真有汉字，日文目标要求
+   假名或汉字，英文目标要求拉丁字母占优——这样「en 目标却回了中文」会被拒掉并重试。
+7. **拉丁兄弟语言之间不做硬校验**：字符集分不出来，硬校验只会误杀正确译文。
+
+**设置页**：`设置 → 双语` 新增「本地显示语言」卡片，18 项下拉框，切换即写 localStorage
+（`shadow-bilingual.localLanguage`）并 `store.retry()` 触发重扫。宿主侧同名字段
+`localLanguage` 落在 `~/.dsh/shadow-bilingual.json`，`/config` 的 GET/POST 都支持。
+
+**测试**：`tests/` 从 12 项扩到 14 项，新增「多语种显示目标与书写系统校验」
+「缓存键按目标语言分开」两组；宿主测试断言 `SYSTEM_PROMPT` 里列出了所有语言码、
+`/config` 能读写 `localLanguage`、`zh_tw` 归一化成 `zh-TW`、未知值回落 `zh`。
+
 ## 最近改动
 
 1. 新增 `PlainUserTextBilingual`，接管 `conversation.user.text.node` key `text`。
@@ -263,3 +303,8 @@ node /tmp/test-send-path.cjs lib/client.js
     当成本段译文发出去，发的内容完全不相干。
 14. 修复影子挂起导致**所有后续消息永久发不出去**：加 `SHADOW_TIMEOUT_MS` 与
     「影子属于别的草稿时立即重开」两条路径。
+15. **本地显示语言可选**（D11）：`translationTarget` 两模式、`unitKey` 带目标语言、
+    `languageOf` 扩成书写系统探测、新增 `needsEnglish` / `detectLatinLanguage` /
+    `translationLooksValid`；设置页加 18 语种下拉框；宿主加 `localLanguage` 配置与
+    多语言 `SYSTEM_PROMPT`。
+16. README 改写成中英双语（英文在前、中文在后）。

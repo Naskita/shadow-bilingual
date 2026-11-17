@@ -5,16 +5,20 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const md = require('../lib/markdown.cjs')
 
-function translationsFor(source, map) {
+function translationsFor(source, map, target) {
   const units = md.splitUnits(source)
   const out = {}
   for (const unit of units) {
     if (Object.prototype.hasOwnProperty.call(map, unit.content)) {
-      out[md.unitKey(unit)] = map[unit.content]
+      out[md.unitKey(unit, target)] = map[unit.content]
     }
   }
   return out
 }
+
+/** 显示侧默认语言是中文；本地语种相关的断言自己传 options。 */
+const LOCAL_ZH = { mode: 'local', localLanguage: 'zh' }
+const ENGLISH = { mode: 'english', localLanguage: 'zh' }
 
 test('heading translation is appended on the same line', () => {
   const source = '### 3. 重要物理性质'
@@ -90,13 +94,27 @@ test('language detection and target selection', () => {
   assert.equal(md.languageOf('功率因数 0.88 滞后（lagging）：'), 'zh')
   assert.equal(md.languageOf('由 (ii)：'), 'zh')
   assert.equal(md.languageOf('(a) Fringing（3 分）'), 'zh')
-  assert.deepEqual(md.translationTarget({ kind: 'paragraph', content: '磁通量是标量。' }), { source: 'zh', target: 'en' })
-  assert.deepEqual(md.translationTarget({ kind: 'paragraph', content: 'Magnetic flux is a scalar quantity.' }), { source: 'en', target: 'zh' })
-  assert.deepEqual(md.translationTarget({ kind: 'paragraph', content: '功率因数 0.88 滞后（lagging）：' }), { source: 'zh', target: 'en' })
-  assert.deepEqual(md.translationTarget({ kind: 'table', content: '| 名称 | 值 |\n| --- | --- |\n| a | 1 |' }), { source: 'zh', target: 'en' })
-  assert.equal(md.translationTarget({ kind: 'paragraph', content: '12345' }), null)
-  assert.equal(md.translationTarget({ kind: 'paragraph', content: 'const x = { a: 1 };' }), null)
-  assert.equal(md.translationTarget({ kind: 'paragraph', content: 'https://example.com/a' }), null)
+  // 显示侧（local）：英文正文补本地语言
+  assert.deepEqual(md.translationTarget({ kind: 'paragraph', content: 'Magnetic flux is a scalar quantity.' }, LOCAL_ZH), { source: 'en', target: 'zh' })
+  assert.equal(md.translationTarget({ kind: 'paragraph', content: '磁通量是标量。' }, LOCAL_ZH), null)
+  assert.deepEqual(
+    md.translationTarget({ kind: 'paragraph', content: 'Magnetic flux is a scalar quantity.' }, { mode: 'local', localLanguage: 'ja' }),
+    { source: 'en', target: 'ja' },
+  )
+  assert.deepEqual(
+    md.translationTarget({ kind: 'table', content: '| Name | Value |\n| --- | --- |\n| a | 1 |' }, LOCAL_ZH),
+    { source: 'en', target: 'zh' },
+  )
+  // AI 侧（english）：本地语言在发送前换成英文
+  assert.deepEqual(md.translationTarget({ kind: 'paragraph', content: '磁通量是标量。' }, ENGLISH), { source: 'zh', target: 'en' })
+  assert.deepEqual(md.translationTarget({ kind: 'paragraph', content: '功率因数 0.88 滞后（lagging）：' }, ENGLISH), { source: 'zh', target: 'en' })
+  assert.equal(md.translationTarget({ kind: 'paragraph', content: 'Magnetic flux is a scalar quantity.' }, ENGLISH), null)
+  // 两种模式共有的跳过规则
+  for (const options of [LOCAL_ZH, ENGLISH]) {
+    assert.equal(md.translationTarget({ kind: 'paragraph', content: '12345' }, options), null)
+    assert.equal(md.translationTarget({ kind: 'paragraph', content: 'const x = { a: 1 };' }, options), null)
+    assert.equal(md.translationTarget({ kind: 'paragraph', content: 'https://example.com/a' }, options), null)
+  }
 })
 
 test('cleanTranslation removes headings, bullets and labels', () => {
@@ -110,4 +128,64 @@ test('same source text shares one translation across units', () => {
   const source = '- 重复\n- 重复'
   const out = md.decorate(source, translationsFor(source, { 重复: 'Repeated' }))
   assert.equal((out.match(/Repeated/g) || []).length, 2)
+})
+
+test('multi-language display targets and script validation', () => {
+  const english = { kind: 'paragraph', content: 'Magnetic flux is a scalar quantity.' }
+
+  // 同一段英文，换本地语种就换目标语言
+  for (const code of ['zh', 'ja', 'ko', 'de', 'es', 'ru', 'ar']) {
+    assert.equal(md.translationTarget(english, { mode: 'local', localLanguage: code }).target, code)
+  }
+
+  // 已经是本地语言就跳过（显示侧不需要「中译中」）
+  assert.equal(md.translationTarget({ kind: 'paragraph', content: '磁通量是标量。' }, { mode: 'local', localLanguage: 'zh' }), null)
+  assert.equal(md.translationTarget({ kind: 'paragraph', content: '磁束はスカラーです。' }, { mode: 'local', localLanguage: 'ja' }), null)
+
+  // 书写系统识别
+  assert.equal(md.languageOf('磁束はスカラー量です。'), 'ja')
+  assert.equal(md.languageOf('자기 선속은 스칼라입니다.'), 'ko')
+  assert.equal(md.languageOf('Магнитный поток является скаляром.'), 'ru')
+  assert.equal(md.languageOf('التدفق المغناطيسي كمية قياسية.'), 'ar')
+
+  // needsEnglish：AI 侧只认英文
+  assert.equal(md.needsEnglish('磁通量是标量。', 'zh'), true)
+  assert.equal(md.needsEnglish('磁束はスカラーです。', 'ja'), true)
+  assert.equal(md.needsEnglish('El flujo magnético es una cantidad escalar.', 'zh'), true)
+  assert.equal(md.needsEnglish('Magnetic flux is a scalar quantity.', 'zh'), false)
+  assert.equal(md.needsEnglish('12345', 'zh'), false)
+
+  // 拉丁兄弟语言靠高频虚词区分；英语应当判不出来（= 不用翻译）
+  assert.equal(md.detectLatinLanguage('El flujo magnético es una cantidad escalar.'), 'es')
+  assert.equal(md.detectLatinLanguage('Der magnetische Fluss ist eine skalare Größe.'), 'de')
+  assert.equal(md.detectLatinLanguage('Magnetic flux is a scalar quantity.'), null)
+
+  // 译文粗筛：目标语言的书写系统必须对
+  assert.equal(md.translationLooksValid('磁束はスカラー量です。', 'ja', 'src'), true)
+  assert.equal(md.translationLooksValid('磁束はスカラー量です。', 'en', 'src'), false)
+  assert.equal(md.translationLooksValid('자기 선속은 스칼라입니다.', 'ko', 'src'), true)
+  assert.equal(md.translationLooksValid('Магнитный поток.', 'ru', 'src'), true)
+  assert.equal(md.translationLooksValid('same text', 'en', 'same text'), false)
+  assert.equal(md.translationLooksValid('', 'zh', 'src'), false)
+})
+
+test('cache keys separate the same source by target language', () => {
+  const unit = { kind: 'paragraph', content: 'Magnetic flux is a scalar quantity.' }
+  assert.notEqual(md.unitKey(unit, 'zh'), md.unitKey(unit, 'ja'))
+  assert.equal(md.unitKey(unit, 'zh'), md.unitKey(unit, 'zh'))
+  // 不传 target 时保持旧行为，老缓存不会因为升级全部失效
+  assert.equal(md.unitKey(unit), md.unitKey(unit, ''))
+
+  // decorate 按 target 取译文：同一段英文可以同时有中文与日文两条对照
+  const source = 'Magnetic flux is a scalar quantity.'
+  const zh = { [md.unitKey(unit, 'zh')]: '磁通量是标量。' }
+  const ja = { [md.unitKey(unit, 'ja')]: '磁束はスカラー量です。' }
+  assert.match(md.decorate(source, zh, 'zh'), /磁通量是标量。/)
+  assert.match(md.decorate(source, ja, 'ja'), /磁束はスカラー量です。/)
+  assert.doesNotMatch(md.decorate(source, ja, 'zh'), /磁束はスカラー量です。/)
+
+  // 输入侧替换：同段中文换成英文
+  const zhUnit = { kind: 'paragraph', content: '磁通量是标量。' }
+  const englishMap = { [md.unitKey(zhUnit, 'en')]: 'Magnetic flux is a scalar quantity.' }
+  assert.equal(md.replaceUnits('磁通量是标量。', englishMap, 'en'), 'Magnetic flux is a scalar quantity.')
 })

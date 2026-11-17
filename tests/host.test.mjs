@@ -139,7 +139,19 @@ test('host config + translate route with a fake DeepSeek endpoint', async () => 
     } catch {
       target = 'zh'
     }
-    const text = target === 'en' ? 'Merge this branch in.' : '你好，世界。'
+    const SAMPLES = {
+      en: 'Merge this branch in.',
+      zh: '你好，世界。',
+      'zh-TW': '你好，世界。',
+      ja: 'こんにちは、世界。',
+      ko: '안녕하세요, 세계.',
+      ru: 'Привет, мир.',
+      ar: 'مرحبا بالعالم.',
+      hi: 'नमस्ते दुनिया।',
+      th: 'สวัสดีชาวโลก',
+    }
+    // 拉丁字母的目标语言（es/fr/de/…）：宿主只校验有没有拉丁字母
+    const text = SAMPLES[target] ?? 'Hola, mundo.'
     return {
       ok: true,
       status: 200,
@@ -164,9 +176,39 @@ test('host config + translate route with a fake DeepSeek endpoint', async () => 
     assert.equal(result.status, 200)
     assert.equal(result.json.hasKey, true)
     assert.equal(result.json.keyHint, 'sk-…7890')
-    const saved = JSON.parse(readFileSync(path.join(home, 'shadow-bilingual.json'), 'utf8'))
+    let saved = JSON.parse(readFileSync(path.join(home, 'shadow-bilingual.json'), 'utf8'))
     assert.equal(saved.apiKey, 'sk-test-1234567890')
 
+    // 本地显示语言：默认中文、可写可读、未知值回落、落盘
+    assert.equal(result.json.localLanguage, 'zh')
+    assert.ok(Array.isArray(result.json.localLanguages) && result.json.localLanguages.length >= 10)
+    result = await call(handler, 'POST', '/config', { localLanguage: 'ja' })
+    assert.equal(result.status, 200)
+    assert.equal(result.json.localLanguage, 'ja')
+    saved = JSON.parse(readFileSync(path.join(home, 'shadow-bilingual.json'), 'utf8'))
+    assert.equal(saved.localLanguage, 'ja')
+
+    // 大小写 / 下划线宽容 + 未知值回落默认
+    result = await call(handler, 'POST', '/config', { localLanguage: 'zh_tw' })
+    assert.equal(result.json.localLanguage, 'zh-TW')
+    result = await call(handler, 'POST', '/config', { localLanguage: 'klingon' })
+    assert.equal(result.json.localLanguage, 'zh')
+
+    // 显示侧目标语言真的要送到模型，且译文按该语言校验
+    calls.length = 0
+    result = await call(handler, 'POST', '/translate', { items: [{ id: 1, text: 'Hello, world.', target: 'ja' }] })
+    assert.equal(result.status, 200)
+    assert.equal(result.json.items[0].text, 'こんにちは、世界。')
+    const jaSent = JSON.parse(calls[0].options.body)
+    const jaUser = jaSent.messages.find((m) => m.role === 'user')
+    assert.equal(JSON.parse(jaUser.content).items[0].target, 'ja')
+    // 系统提示词里必须列出所有目标语言，否则模型不知道 ja 是什么
+    const systemText = jaSent.messages.find((m) => m.role === 'system').content
+    for (const code of ['en', 'zh', 'ja', 'ko', 'de', 'ar']) {
+      assert.ok(systemText.includes(code), `SYSTEM_PROMPT 缺少语言 ${code}`)
+    }
+
+    calls.length = 0
     result = await call(handler, 'POST', '/translate', { items: [{ id: 1, text: 'Hello, world.', target: 'zh' }] })
     assert.equal(result.status, 200)
     assert.equal(result.json.items[0].text, '你好，世界。')

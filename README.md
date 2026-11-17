@@ -1,41 +1,204 @@
 # Shadow Bilingual
 
-个人使用的 DSH 插件：**对话全英文 + 界面双语**。版本 `1.0.0`。
+[中文](#中文) · English
 
-从 [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) fork 后改造的个人版，
-仅本机使用。上游的助手双语渲染沿用，其余为本地定制。
+A personal DSH plugin: **English-only conversation with the model, bilingual display for you.** Version `1.0.0`.
+
+Forked from [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) and reworked as a private,
+local-only build. The upstream assistant-side bilingual rendering is kept; everything else is local
+customization.
+
+---
+
+## What it does
+
+| Capability | Where | Origin |
+| --- | --- | --- |
+| Assistant replies: English body + local-language line underneath | `conversation.chat.node` (key `assistant-step`) | upstream |
+| User messages: English is what gets sent; local-language original shown under the bubble | `conversation.user.text.node` (key `text`) | this fork |
+| "Send translation" checkbox, checked by default | `conversation.composer.dock` | this fork |
+| Steering box (`dsh-steer-note`) text is translated before sending | `textarea.dsh-steer-note-input` | this fork |
+| Queued messages (sent while the agent is busy) are translated in place | `conversation.input.dock` id `shadow-bilingual-queue` | this fork |
+| Model always answers in English | system prompt section `bilingual:response-language` (order 9500) | this fork |
+| **Selectable local display language** (18 languages) | Settings → Shadow Bilingual | this fork |
+
+### Language model
+
+Two independent languages, deliberately:
+
+- **AI side is always English.** The model only ever reads English, which is the cheapest and most
+  reliable input for it. Anything you type in another language is rewritten into English *before*
+  it is sent — in the composer, in the steering box, and in the message queue.
+- **Display side is whatever you pick.** The assistant's English reply gets a translation in your
+  local language underneath. Pick it under **Settings → Shadow Bilingual → 本地显示语言**.
+
+Supported display languages: `zh` (Simplified Chinese), `zh-TW` (Traditional), `ja`, `ko`, `es`, `fr`,
+`de`, `pt`, `ru`, `it`, `nl`, `pl`, `tr`, `ar`, `hi`, `th`, `vi`, `id`.
+
+Translations are cached **per target language**. Switching the display language never reuses the
+previous language's wording; it re-translates new paragraphs as needed.
+
+## How it works (read this before changing anything)
+
+- **Where the user's local-language original comes from.** On send, the interceptor records an
+  `English → original` pair into localStorage (`shadow-bilingual.sent.v1`, capped at 200 entries,
+  keyed by whitespace-normalized English). The bubble looks the message body up in that map, and
+  falls back to entries in the translation cache that really are in the local script. If neither
+  matches, no second line is shown — it never invents one.
+- **Why not `conversation.chat.user.before`.** Measured: this chain slot only receives
+  `source = {kind, rpcId, clientTimeZone}`. There is no message text in it (see `docs/PLAN.md`).
+- **Why not `conversation.chat.user.content`.** It is a singleton Factory; registering it again from
+  outside neither errors nor takes effect (measured), and replacing it would drop attachments.
+  Only **keyed** slots can be taken over reliably.
+- **Send interception.** A capture-phase listener on `document` watches `keydown Enter` and clicks on
+  the send button. On a hit it calls `preventDefault` → translates → `inputActions.setDraft(english)`
+  → `inputActions.submit()`. Shift/Alt, IME composition (`isComposing` / `keyCode 229`) and
+  auto-repeat are skipped.
+- **The steering box is a second input.** It belongs to the `dsh-steer-note` plugin
+  (`textarea.dsh-steer-note-input`) and has nothing to do with the main composer; it sends through
+  `sessionRemote.prompt({mode:'steer'})`. It is a **controlled React component** whose `send()`
+  reads `latestTextRef` (state), not the DOM — so you must use the native value setter plus an
+  `input` event, wait a frame, then click its own button. Writing to the DOM alone does nothing.
+
+- **All three send paths must be covered** — miss one and non-English text leaks through:
+
+  | Path | Entry point | Delivered | How it is handled |
+  | --- | --- | --- | --- |
+  | Main composer | composer | immediately, when idle | shadow translation preview → submit the translation on send |
+  | Steering box | `dsh-steer-note` textarea | end of the current step | set value + input event → click its own button |
+  | Message queue | DSH inbox `next-turn` | as the next turn, after the whole turn ends | `useProjection('inbox')` + `updateQueue({kind:'edit'})` |
+
+  The queue path **does not go through any text box**: messages you send while the agent is working
+  land in the official inbox, invisible to the composer interceptor. That is where non-English text
+  used to leak out.
+
+- **The shadow translation lives inside the input box.** 900 ms after you stop typing, a grey English
+  continuation appears directly under your draft. It diffs per paragraph against the cache and only
+  requests paragraphs it has not seen — it is not a full re-translation on every keystroke. During a
+  re-translation the previous version stays visible, dimmed and labelled "updating…", so nothing
+  flickers.
+- **You cannot send before the translation is ready.** Clicking send while it is still translating
+  shows "translating… (will send when done)" and the event is swallowed — nothing is submitted.
+  As soon as the translation lands it **sends automatically**; you do not press send again. This is
+  what prevents the "original goes out, then the English version goes out" double send.
+- **Failure and stalls do not block you.** A failed translation falls back to the original text
+  immediately; a stalled one falls back after 15 seconds. Sending the original is always better than
+  trapping you in the composer.
+- **Queued messages are only rewritten when the row is pure text.** Rows carrying images or files are
+  skipped, because rewriting `content` would drop the attachments. Those arrive in the original
+  language — a deliberate trade-off.
+
+## Known boundaries (design trade-offs, not bugs)
+
+- Only text a human sends **through those three paths** is intercepted. Messages generated by the UI
+  or the host itself (continuations such as "继续", retries) never pass through them and are sent
+  verbatim.
+- Drafts that are already English are neither translated nor replaced.
+- A single paragraph longer than 5000 characters is skipped (keeps one request from growing unbounded).
+- On translation failure the text is sent **as-is**; the steering box behaves the same way.
+- The assistant-side "English body + local line" layout comes from upstream and is kept.
+
+## Configuration
+
+- Host config: `~/.dsh/shadow-bilingual.json` (API Key / model / Base URL / `forceEnglish` / `localLanguage`)
+- Key precedence: plugin config → `DEEPSEEK_API_KEY` → DSH credentials service
+- Routes: `/api/shadow-bilingual/{config,translate,test,health}`
+- Settings page: Settings → Shadow Bilingual
+
+## Build and install
+
+```bash
+cd /Users/naskita/Documents/deepseek-harness/default-workspace/shadow-bilingual
+node build.mjs     # lib/markdown.cjs + lib/client.template.js → lib/client.js
+```
+
+Installing (after editing `lib/client.js` the client half usually hot-reloads; host-side changes need a reinstall):
+
+```
+plugin_manager install_bundle target=/Users/naskita/Documents/deepseek-harness/default-workspace/shadow-bilingual
+```
+
+## Self-check
+
+Two scripts that never touch the real UI — run them after changing the bundle, it is far faster than
+poking the interface:
+
+```bash
+node /tmp/list-slots.cjs lib/client.js                      # print every registered slot and listener
+node /tmp/test-send-path.cjs lib/client.js                  # 23 send-path assertions
+node --test tests/                                          # 14 unit tests (client + host + markdown)
+```
+
+`test-send-path.cjs` covers: one Enter submits once, repeated Enter while a translation is in flight
+does not duplicate, failure sends the original, a stalled translation times out and sends the
+original, the lock is released after the timeout, a Chinese queue row is rewritten to English, rows
+with attachments are left alone, a failed queue translation keeps the original, the same row is not
+translated twice, and exactly one `document` listener set exists.
+
+There is no devtools on the desktop app; verification uses the accessibility tree:
+
+```bash
+agent-desktop snapshot --window-id <DSH window id> --timeout-ms 25000
+```
+
+---
+
+<a id="中文"></a>
+
+# 中文说明
+
+个人使用的 DSH 插件：**跟模型对话全英文，界面显示双语**。版本 `1.0.0`。
+
+从 [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) fork 后改造的个人版，仅本机使用。
+助手侧的双语渲染沿用上游，其余为本地定制。
 
 ## 它做什么
 
-| 能力 | 位置 | 状态 |
+| 能力 | 位置 | 来源 |
 | --- | --- | --- |
-| 助手回复：英文正文 + 下方中文对照 | `conversation.chat.node` (key `assistant-step`) | 沿用上游 |
-| 用户消息：发送的是英文，气泡内下方显示中文原文 | `conversation.user.text.node` (key `text`) | 本定制新增 |
+| 助手回复：英文正文 + 下方本地语言对照 | `conversation.chat.node` (key `assistant-step`) | 沿用上游 |
+| 用户消息：发送的是英文，气泡内下方显示本地语言原文 | `conversation.user.text.node` (key `text`) | 本定制新增 |
 | 「发送译文」勾选框，默认勾选 | `conversation.composer.dock` | 本定制新增 |
-| 插话框（dsh-steer-note）里打中文也译成英文再发 | `textarea.dsh-steer-note-input` | 本定制新增 |
+| 插话框（dsh-steer-note）里打本地语言也译成英文再发 | `textarea.dsh-steer-note-input` | 本定制新增 |
 | 排队中的消息（我干活时你发的）就地译成英文 | `conversation.input.dock` id `shadow-bilingual-queue` | 本定制新增 |
 | 模型始终用英文回复 | 系统提示词 section `bilingual:response-language` (order 9500) | 本定制新增 |
+| **本地显示语言可选**（18 种） | 设置 → 双语 | 本定制新增 |
+
+### 语言模型
+
+刻意分成两种语言：
+
+- **AI 侧永远是英文。** 模型只读英文——这是最省 token、也最可靠的输入。你打的任何非英文内容，
+  都会在**发送之前**改写成英文：主输入框、插话框、消息队列，三条路径都管。
+- **显示侧跟随你的选择。** 助手的英文回复下方，会补一份你选的本地语言对照。
+  在 **设置 → 双语 → 本地显示语言** 里选。
+
+支持：`zh` 简体中文、`zh-TW` 繁體中文、`ja` 日本語、`ko` 한국어、`es` Español、`fr` Français、
+`de` Deutsch、`pt` Português、`ru` Русский、`it` Italiano、`nl` Nederlands、`pl` Polski、
+`tr` Türkçe、`ar` العربية、`hi` हिन्दी、`th` ไทย、`vi` Tiếng Việt、`id` Bahasa Indonesia。
+
+译文**按目标语言分别缓存**。换语种不会读到上一种语言的措辞，新段落按新语言重译。
 
 ## 关键实现（改之前先读这段）
 
-- **用户消息的中文原文怎么来的**：发出前拦截器把 `英文 → 中文原文` 记进 localStorage
+- **用户消息的本地语言原文怎么来的**：发出前拦截器把 `英文 → 原文` 记进 localStorage
   (`shadow-bilingual.sent.v1`，上限 200 条，键是空白归一化后的英文全文)。
-  渲染时用消息正文去查这张表；查不到就退回译文缓存里**确实是中文**的条目。
-  查不到就不显示 ZH 行——不会编造。
+  渲染时用消息正文去查这张表；查不到就退回译文缓存里**确实是本地文字**的条目。
+  都查不到就不显示第二行——不会编造。
 - **为什么不用 `conversation.chat.user.before`**：实测该 chain 槽位拿到的 `source`
   只有 `{kind, rpcId, clientTimeZone}`，没有正文（见 `docs/PLAN.md` 记录）。
 - **为什么不用 `conversation.chat.user.content`**：它是单例 Factory，外部重复注册
-  不报错但也不会被选中（实测）。只有 **keyed** 槽位能稳定接管。
+  不报错但也不会被选中（实测），且替换它还会丢附件。只有 **keyed** 槽位能稳定接管。
 - **发送拦截**：`document` 捕获阶段监听 `keydown Enter` 与 `click` 发送按钮，
   命中后 `preventDefault` → 翻译 → `inputActions.setDraft(english)` → `inputActions.submit()`。
-  跳过 Shift/Alt、IME 组合态 (`isComposing` / `keyCode 229`)。
+  跳过 Shift/Alt、IME 组合态 (`isComposing` / `keyCode 229`) 与长按自动重复。
 - **插话框是第二套输入**（`dsh-steer-note` 插件的 `textarea.dsh-steer-note-input`），
   和主输入框完全无关，走的是 `sessionRemote.prompt({mode:'steer'})`。
   它是**受控 React 组件**，`send()` 读的是 `latestTextRef`（state），不是 DOM——
   所以必须用原生 setter + `input` 事件让 React 更新，等一帧再点它的按钮。
   只改 DOM 文本是没用的。
 
-- **三条发送路径都要管**（缺一条就会漏中文）：
+- **三条发送路径都要管**（缺一条就会漏）：
 
   | 路径 | 入口 | 送达时机 | 怎么拦 |
   | --- | --- | --- | --- |
@@ -51,11 +214,11 @@
   重译时上一版译文不会消失，只是淡化并标注「更新中…」，所以看不到闪烁。
 - **译文没出来之前发不出去**。这时点发送，面板会显示「正在翻译…（翻译完成后发送）」，
   事件被吞掉、不会提交；译文一就绪就**自动替你发出去**，不需要再点一次。
-  这是为了避免「中文先发、英文再发」的双发。
+  这是为了避免「原文先发、英文再发」的双发。
 - **翻译失败或卡住不算数**：失败立刻退回、原文照发；卡住 15 秒后同样退回。
-  宁可发中文，也不把你锁死在输入框前。
+  宁可发原文，也不把你锁死在输入框前。
 - **排队消息只处理纯文本行**：带图片/文件的行跳过（改 content 会丢附件）。
-  这类消息会以中文送达，是有意的取舍。
+  这类消息会以原文送达，是有意的取舍。
 
 ## 已知边界（不是 bug，是设计取舍）
 
@@ -64,11 +227,11 @@
 - 纯英文草稿不翻译、不替换。
 - 单段超过 5000 字符的草稿跳过翻译（避免一次请求过大）。
 - 翻译失败时**原样发送**，不会卡住发送（插话框同样：翻译失败就点它自己的按钮原样发）。
-- 助手侧英文正文 + 中文对照是上游行为，已按你的要求保留。
+- 助手侧英文正文 + 本地语言对照是上游行为，已按需求保留。
 
 ## 配置
 
-- 宿主配置：`~/.dsh/shadow-bilingual.json`（API Key / 模型 / Base URL / `forceEnglish`）
+- 宿主配置：`~/.dsh/shadow-bilingual.json`（API Key / 模型 / Base URL / `forceEnglish` / `localLanguage`）
 - Key 优先级：插件配置 > `DEEPSEEK_API_KEY` 环境变量 > DSH 凭据服务
 - 路由：`/api/shadow-bilingual/{config,translate,test,health}`
 - 设置页：设置 → 双语
@@ -88,11 +251,12 @@ plugin_manager install_bundle target=/Users/naskita/Documents/deepseek-harness/d
 
 ## 自检
 
-两个不碰界面的脚本，改完 bundle 先跑它们，比在界面上试错快：
+不碰界面的脚本，改完 bundle 先跑它们，比在界面上试错快：
 
 ```bash
 node /tmp/list-slots.cjs lib/client.js                      # 打印注册的全部槽位与监听器
 node /tmp/test-send-path.cjs lib/client.js                  # 23 项发送链路断言
+node --test tests/                                          # 14 项单测（client + host + markdown）
 ```
 
 `test-send-path.cjs` 覆盖：单次 Enter 只提交一次、翻译在飞时连按不重复、翻译失败发原文、
@@ -104,3 +268,8 @@ node /tmp/test-send-path.cjs lib/client.js                  # 23 项发送链路
 ```bash
 agent-desktop snapshot --window-id <DSH 窗口 id> --timeout-ms 25000
 ```
+
+## License
+
+MIT. Assistant-side bilingual rendering derives from
+[Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) (MIT).
