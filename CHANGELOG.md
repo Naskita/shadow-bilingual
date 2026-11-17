@@ -1,4 +1,13 @@
 # Changelog
+## [1.0.6] — 2026-11-18
+
+### Fixed
+
+- The start-screen composer now sends the English version instead of swallowing the message: the
+  plugin waits for the composer's own send button to become enabled and clicks it, verifies that
+  `actions.submit()` actually cleared the draft, and — if neither works — puts the original draft back
+  and lets the next Enter go straight to the app. A new conversation can always send.
+
 ## [1.0.5] — 2026-11-18
 
 ### Fixed
