@@ -250,3 +250,56 @@ test('host config + translate route with a fake DeepSeek endpoint', async () => 
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('credentials service is looked up per call, not cached at apply()', async () => {
+  // 回归：插件可能是在应用启动之后才被 plugin_manager 挂载的，那一刻 credentials
+  // 服务未必就绪。早先 apply() 里取一次就缓存 null，导致 hasKey 永远 false、
+  // 翻译整个不可用，而界面上没有任何提示。
+  const home = mkdtempSync(path.join(tmpdir(), 'shadow-bilingual-creds-'))
+  const previousHome = process.env.DSH_HOME
+  const previousKey = process.env.DEEPSEEK_API_KEY
+  delete process.env.DEEPSEEK_API_KEY
+  process.env.DSH_HOME = home
+
+  let handler = null
+  let credCalls = 0
+  const ctx = {
+    webServer: {
+      register(options) {
+        handler = options.handler
+      },
+    },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    // 关键：apply() 时还没有 credentials，之后才有——模拟「服务晚于插件就绪」
+    get(name) {
+      if (name !== 'credentials') return undefined
+      return {
+        async resolve() {
+          credCalls += 1
+          return { value: 'sk-late-1234567890' }
+        },
+      }
+    },
+  }
+
+  try {
+    const mod = await import('../lib/index.js')
+    mod.apply(ctx)
+    assert.ok(handler)
+
+    const result = await call(handler, 'GET', '/health')
+    assert.equal(result.status, 200)
+    assert.equal(result.json.hasKey, true, 'credentials 应当每次现取，不能缓存 null')
+    assert.equal(result.json.keySource, 'credentials')
+    assert.ok(credCalls > 0)
+
+    // 再问一次仍然可用（说明不是一次性快照）
+    const again = await call(handler, 'GET', '/health')
+    assert.equal(again.json.hasKey, true)
+    assert.ok(credCalls >= 2, '第二次查询也应重新走凭据服务')
+  } finally {
+    process.env.DSH_HOME = previousHome
+    if (previousKey !== undefined) process.env.DEEPSEEK_API_KEY = previousKey
+    rmSync(home, { recursive: true, force: true })
+  }
+})
