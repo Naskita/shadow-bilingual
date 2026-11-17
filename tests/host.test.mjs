@@ -303,3 +303,233 @@ test('credentials service is looked up per call, not cached at apply()', async (
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('原文已经是目标语言时不再请求模型，也不会 502', async () => {
+  // 回归（2026-11-17 线上日志成片 `status=502 empty`）：助手偶尔直接用中文回答，
+  // 客户端按本地语言请求 zh 译文；旧逻辑把「模型原样返回」判成无效 → 重试 → 空 → 502。
+  const home = mkdtempSync(path.join(tmpdir(), 'shadow-bilingual-identity-'))
+  const previousHome = process.env.DSH_HOME
+  const previousKey = process.env.DEEPSEEK_API_KEY
+  delete process.env.DEEPSEEK_API_KEY
+  process.env.DSH_HOME = home
+
+  let handler = null
+  const ctx = {
+    webServer: {
+      register(options) {
+        handler = options.handler
+      },
+    },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+  }
+
+  const originalFetch = globalThis.fetch
+  let requests = 0
+  globalThis.fetch = async () => {
+    requests += 1
+    throw new Error('原文已是目标语言时不应该再打模型')
+  }
+
+  try {
+    const mod = await import('../lib/index.js')
+    mod.apply(ctx)
+    await call(handler, 'POST', '/config', { apiKey: 'sk-identity-1234567890' })
+
+    const chinese = '我发现了一个设计缺口：宿主端存储了 localLanguage，却从不把它发给模型。'
+    let result = await call(handler, 'POST', '/translate', {
+      items: [{ id: 1, text: chinese, target: 'zh' }],
+    })
+    assert.equal(result.status, 200)
+    assert.equal(result.json.items[0].text, chinese)
+    assert.equal(requests, 0, '同一语言的段落必须跳过请求')
+
+    // 用户直接打英文时的 en 目标同理
+    const english = 'Merge this branch in.'
+    result = await call(handler, 'POST', '/translate', {
+      items: [{ id: 7, text: english, target: 'en' }],
+    })
+    assert.equal(result.status, 200)
+    assert.equal(result.json.items[0].text, english)
+    assert.equal(requests, 0)
+
+    // 纯符号/数字没有可译内容：模型原样返回时不能判成 502
+    globalThis.fetch = async (_url, options) => {
+      requests += 1
+      const items = JSON.parse(JSON.parse(options.body).messages[1].content).items
+      const content = JSON.stringify({ items: items.map((item) => ({ id: item.id, text: item.text })) })
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ choices: [{ message: { content } }] })
+        },
+      }
+    }
+    requests = 0
+    result = await call(handler, 'POST', '/translate', { items: [{ id: 9, text: '—', target: 'zh' }] })
+    assert.equal(result.status, 200)
+    assert.equal(result.json.items[0].text, '—')
+    assert.ok(requests >= 1)
+
+    // 混批：无需翻译的直接通过，需要翻译的仍然交给模型
+    globalThis.fetch = async () => {
+      requests += 1
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ items: [{ id: 2, text: 'Hello world.' }] }) } }],
+          })
+        },
+      }
+    }
+    requests = 0
+    result = await call(handler, 'POST', '/translate', {
+      items: [
+        { id: 1, text: '已经就是中文的段落', target: 'zh' },
+        { id: 2, text: '这是一句需要翻成英文的话。', target: 'en' },
+      ],
+    })
+    assert.equal(result.status, 200)
+    assert.equal(result.json.items.length, 2)
+    assert.equal(result.json.items[0].text, '已经就是中文的段落')
+    assert.equal(result.json.items[1].text, 'Hello world.')
+    assert.equal(requests, 1)
+  } finally {
+    try {
+      if (handler !== null) await call(handler, 'POST', '/config', { apiKey: '' })
+    } catch {
+      // 清理失败不影响测试结论
+    }
+    globalThis.fetch = originalFetch
+    process.env.DSH_HOME = previousHome
+    if (previousKey !== undefined) process.env.DEEPSEEK_API_KEY = previousKey
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('目标英文却原样回中文仍然算失败（不能把「没翻译」放过）', async () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'shadow-bilingual-lazy-'))
+  const previousHome = process.env.DSH_HOME
+  const previousKey = process.env.DEEPSEEK_API_KEY
+  delete process.env.DEEPSEEK_API_KEY
+  process.env.DSH_HOME = home
+
+  let handler = null
+  const ctx = {
+    webServer: {
+      register(options) {
+        handler = options.handler
+      },
+    },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+  }
+
+  const originalFetch = globalThis.fetch
+  let requests = 0
+  globalThis.fetch = async (_url, options) => {
+    requests += 1
+    const items = JSON.parse(JSON.parse(options.body).messages[1].content).items
+    // 懒惰模型：把中文原样回给 en 目标
+    const content = JSON.stringify({ items: items.map((item) => ({ id: item.id, text: item.text })) })
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify({ choices: [{ message: { content } }] })
+      },
+    }
+  }
+
+  try {
+    const mod = await import('../lib/index.js')
+    mod.apply(ctx)
+    await call(handler, 'POST', '/config', { apiKey: 'sk-lazy-1234567890' })
+    const result = await call(handler, 'POST', '/translate', {
+      items: [{ id: 1, text: '把这条分支合进去。', target: 'en' }],
+    })
+    assert.equal(result.status, 502)
+    assert.ok(requests >= 1)
+  } finally {
+    try {
+      if (handler !== null) await call(handler, 'POST', '/config', { apiKey: '' })
+    } catch {
+      // 清理失败不影响测试结论
+    }
+    globalThis.fetch = originalFetch
+    process.env.DSH_HOME = previousHome
+    if (previousKey !== undefined) process.env.DEEPSEEK_API_KEY = previousKey
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('英文段落里夹一句中文引用时仍然要翻', async () => {
+  // 回归（2026-11-17）：宿主旧 alreadyInTarget 用 /[\u3400-\u9fff]/.test() 判
+  // 「出现一个汉字就是中文」，于是「英文正文 + 一句中文引用」被整段塞进
+  // passthrough、译文 == 原文：HTTP 200、日志无声，界面上整段英文没有译文。
+  const home = mkdtempSync(path.join(tmpdir(), 'shadow-bilingual-mixed-'))
+  const previousHome = process.env.DSH_HOME
+  const previousKey = process.env.DEEPSEEK_API_KEY
+  delete process.env.DEEPSEEK_API_KEY
+  process.env.DSH_HOME = home
+
+  let handler = null
+  const ctx = {
+    webServer: {
+      register(options) {
+        handler = options.handler
+      },
+    },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+  }
+
+  const mixed = 'The crash dialog showed the string 应用无法启动或已意外停止, which came from the host stderr tail.'
+  const translated = '崩溃对话框显示的是 应用无法启动或已意外停止 这句话，它来自宿主 stderr 的尾巴。'
+
+  const originalFetch = globalThis.fetch
+  let requests = 0
+  globalThis.fetch = async (_url, options) => {
+    requests += 1
+    const items = JSON.parse(JSON.parse(options.body).messages[1].content).items
+    const content = JSON.stringify({ items: items.map((item) => ({ id: item.id, text: translated })) })
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify({ choices: [{ message: { content } }] })
+      },
+    }
+  }
+
+  try {
+    const mod = await import('../lib/index.js')
+    mod.apply(ctx)
+    await call(handler, 'POST', '/config', { apiKey: 'sk-mixed-1234567890' })
+
+    // 中文正文夹长标识符：占比够高，仍应原样通过，而且不能从响应里消失。
+    const chineseWithIdentifier = '这个配置文件里没有 localLanguage 字段。'
+    requests = 0
+    const result = await call(handler, 'POST', '/translate', {
+      items: [
+        { id: 1, text: mixed, target: 'zh' },
+        { id: 2, text: chineseWithIdentifier, target: 'zh' },
+      ],
+    })
+    assert.equal(result.status, 200)
+    assert.equal(requests, 1, '混排段落必须交给模型；中文夹标识符不能再消耗请求')
+    assert.equal(result.json.items.length, 2, '通过项也必须原样出现在响应里')
+    assert.equal(result.json.items[0].text, translated)
+    assert.equal(result.json.items[1].text, chineseWithIdentifier)
+  } finally {
+    try {
+      if (handler !== null) await call(handler, 'POST', '/config', { apiKey: '' })
+    } catch {
+      // 清理失败不影响测试结论
+    }
+    globalThis.fetch = originalFetch
+    process.env.DSH_HOME = previousHome
+    if (previousKey !== undefined) process.env.DEEPSEEK_API_KEY = previousKey
+    rmSync(home, { recursive: true, force: true })
+  }
+})

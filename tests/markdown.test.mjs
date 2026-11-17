@@ -117,6 +117,33 @@ test('language detection and target selection', () => {
   }
 })
 
+test('混排：英文正文夹一句中文引用仍然要翻', () => {
+  // 回归（2026-11-17）：旧 languageOf 只要出现一个汉字就返回 'zh'，
+  // 于是「英文正文 + 一句中文引用」被 translationTarget 判成本地语言，
+  // 整段英文永远不翻——现象就是助手回复保持英文、用户的发言才有译文。
+  const mixed = 'The crash dialog showed the string 应用无法启动或已意外停止, which came from the host stderr tail.'
+  assert.equal(md.languageOf(mixed), 'en')
+  assert.deepEqual(md.translationTarget({ kind: 'paragraph', content: mixed }, LOCAL_ZH), { source: 'en', target: 'zh' })
+
+  // 中文正文夹英文术语：仍然是中文，不重复翻
+  const chineseWithTerms = '这个 API 返回 502 错误，需要重试：调用 plugin_manager set_bundle 即可。'
+  assert.equal(md.languageOf(chineseWithTerms), 'zh')
+  assert.equal(md.translationTarget({ kind: 'paragraph', content: chineseWithTerms }, LOCAL_ZH), null)
+
+  // 中文结论 + 后面整段英文（markdown 里仍是同一个段落）
+  const leadThenEnglish =
+    '先说结论：\nThe plugin host now skips segments that the model already answered in the display language because the old logic produced a 502 storm.'
+  assert.equal(md.languageOf(leadThenEnglish), 'en')
+  assert.deepEqual(md.translationTarget({ kind: 'paragraph', content: leadThenEnglish }, LOCAL_ZH), { source: 'en', target: 'zh' })
+
+  // 列表 / 表格单元走同一条判据
+  assert.notEqual(md.translationTarget({ kind: 'list', content: '- 原因：the host process received SIGTERM from the restart script' }, LOCAL_ZH), null)
+  assert.notEqual(
+    md.translationTarget({ kind: 'table', content: '| 项 | 说明 |\n| --- | --- |\n| crash | the dialog text came from the host stderr tail |' }, LOCAL_ZH),
+    null,
+  )
+})
+
 test('cleanTranslation removes headings, bullets and labels', () => {
   assert.equal(md.cleanTranslation('### 3. Important properties', 'heading'), '3. Important properties')
   assert.equal(md.cleanTranslation('- **Scalar nature**: text', 'list'), '**Scalar nature**: text')
@@ -188,4 +215,20 @@ test('cache keys separate the same source by target language', () => {
   const zhUnit = { kind: 'paragraph', content: '磁通量是标量。' }
   const englishMap = { [md.unitKey(zhUnit, 'en')]: 'Magnetic flux is a scalar quantity.' }
   assert.equal(md.replaceUnits('磁通量是标量。', englishMap, 'en'), 'Magnetic flux is a scalar quantity.')
+})
+
+test('译文 map 带目标语言后缀、调用方没传 target 时仍然要渲染', () => {
+  const source = 'Restart verified — the new host logic is live.'
+  const unit = md.splitUnits(source)[0]
+  const map = { [md.unitKey(unit, 'zh')]: '重启已验证——新的宿主逻辑已生效。' }
+  const out = md.decorate(source, map)
+  assert.ok(out.includes('重启已验证——新的宿主逻辑已生效。'), out)
+})
+
+test('译文 map 只按单元建键（不带后缀）时也要渲染', () => {
+  const source = 'Host code is confirmed new.'
+  const unit = md.splitUnits(source)[0]
+  const map = { [md.unitKey(unit)]: '已确认宿主代码是新的。' }
+  assert.ok(md.decorate(source, map).includes('已确认宿主代码是新的。'))
+  assert.ok(md.decorate(source, map, 'zh').includes('已确认宿主代码是新的。'))
 })

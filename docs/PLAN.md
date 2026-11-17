@@ -331,3 +331,120 @@ node tests/send-path.cjs lib/client.js
     `translationLooksValid`；设置页加 18 语种下拉框；宿主加 `localLanguage` 配置与
     多语言 `SYSTEM_PROMPT`。
 16. README 改写成中英双语（英文在前、中文在后）。
+
+## D12：原文已是目标语言时不再请求模型（2026-11-17 晚）
+
+**问题**：`~/.dsh/shadow-bilingual-errors.log` 里成片 `status=502 empty`。旧逻辑把
+「模型原样返回」一律判成无效译文；当助手这次直接用中文回答、客户端又按显示语言 `zh`
+请求时，模型按提示词「已经是目标语言就原样返回」，宿主却拒掉 → 重试 → 空 → 502。
+
+**改法**（`lib/index.js`）：
+
+1. 新增 `alreadyInTarget(text, target)`：按书写系统判断原文是否已经是目标语言。
+   注意 `en` 是特殊目标，**不在** `TARGET_LANGUAGES` 里，要用 `latinDominant` 单独判。
+2. `translateItems()` 先分流：已经是对应语言的段落**不进请求队列**，原样返回；
+   全部被分流时不再要求已配置 Key。
+3. `validTranslationText()` 的同一性校验：原样返回只有在「原文本来就是目标语言」
+   或「原文没有任何字母（`—`、`1)`、emoji）」时才算有效；目标 `en` 却回中文仍判失败。
+
+**代价**：拉丁兄弟语言之间仍分不出来，宁可显示未变形的原文，也不再把整段判成 502。
+
+**测试**：`tests/host.test.mjs` 新增 2 组（同语言零请求 / 懒惰模型仍失败），5/5 通过；
+发送链路 22/22；槽位清单不变。
+
+## 事故复盘：DSH 反复重启（2026-11-17 晚间）
+
+- **现象**：桌面端每隔几十秒弹「应用无法启动或已意外停止」，GUI 端口不断变化。
+- **误判点**：崩溃报告的「错误详情」只是宿主 stderr 的最后一截，不是根因——
+  19:06 / 19:24 两份报告的「错误」第一行竟是成功的 model listing 日志。
+- **真因**：开发用的 `scripts/restart-dsh.sh`（副本 `/tmp/shadow-restart.sh`）反复执行
+  `osascript quit` → `kill 宿主 PID` → `open -a`。宿主被 SIGTERM 杀死，Electron 主进程
+  判定「宿主意外停止」→ 弹崩溃窗。`/tmp/shadow-restart-report.json` 的多次写入是物证。
+- **结论**：不要用 kill 宿主的办法让插件生效；用插件管理的启用/停用，或正常退出重开。
+- 顺带确认：`dsh-desktop-automation@0.1.1` 调用 `scope.settings.register`，而宿主
+  0.2.2-rc.3 的 settings 已换成 `SettingsForms`，属版本不兼容（非崩溃主因）。
+
+## D13：混排段落不能按「出现一个汉字」判整段语言（2026-11-17 深夜）
+
+**现象**：用户发言有双语对照，助手回复整段保持原文，没有任何中文对照。
+
+**根因（两层，同样的错）**：
+
+1. 客户端 `lib/markdown.cjs` 的 `languageOf()`：`han >= 1` 就 `return 'zh'`
+   （全角标点也一票判中文）→ `translationTarget()` 认为这段已经是本地语言，直接返回 `null`，
+   一个翻译请求都不发。
+2. 宿主 `lib/index.js` 的 `alreadyInTarget()`：`SCRIPT_TEST[script].test(text)` 只要
+   出现一个汉字就判「原文已是目标语言」→ 进 `passthrough`，把原文当译文返回：
+   HTTP 200、错误日志无记录，完全静默。
+
+所以不是「开头是中文」，而是**每个段落/列表项/表格单元里只要有一个汉字**就被整段放过。
+助手回复常夹中文引用、中文术语，于是大段英文永远没有译文。
+
+**改法**（双端统一：看主体是不是英文句子，而不是看有没有汉字）：
+
+- 客户端：`latin >= 8 && hanShare <= 0.35 && englishWordHits(plain) >= 2` → `'en'`，
+  否则仍 `'zh'`。`englishWordHits()` 用 `ENGLISH_HINTS`（约 100 个英语高频虚词，
+  故意不含单字母 a/i，避免 `(a) Fringing（3 分）` 被误判）。
+- 宿主：新增 `SCRIPT_COUNT` + `countScript()`；`alreadyInTarget()` 改为
+  `own = countScript(text, spec.script)`，`own === 0 → false`，拉丁语言目标直接 true，
+  其余要求 `own >= countScript(text, 'latin')`——目标文字不输给拉丁字母才算已是目标语言。
+- 兼容保留：`(a) Fringing（3 分）`、`功率因数 0.88 滞后（lagging）：`、`由 (ii)：`
+  仍判 `zh`；中文段落夹 API 名/命令不会被重复翻译。
+
+**验证**：`tests/markdown.test.mjs` 新增「混排：英文正文夹一句中文引用仍然要翻」；
+`tests/host.test.mjs` 新增「英文段落里夹一句中文引用时仍然要翻」（断言真的发给模型）。
+`bash tests/run-all.sh` = build + 19 个单测 + 发送链路 22/22 + 槽位 6 项，全部通过。
+
+**生效方式**：客户端改动需要刷新页面；宿主改动需要重载插件。实测
+`plugin_manager set_bundle`（停用→启用）**不会**重新 import 被 symlink 的宿主模块
+（`/health` 新增的 `logic: 'mixed-v2'` 标记没有出现），所以宿主侧要正常退出重开应用
+（**不要**再用 `scripts/restart-dsh.sh`）。`/health` 现在会回报 `logic` 字段，
+重开后可据此确认新判据已生效。
+
+**D13 补充（同一个晚上，线上实测后）**：宿主第一版判据是「目标文字数 >= 拉丁字母数」，
+把「英文正文夹一句中文引用」（占比约 0.17）判成待翻，正确；但「中文正文夹长标识符」
+（如 `这个配置文件里没有 localLanguage 字段。`，占比 0.46）被判成待翻 → 模型原样返回 →
+同一性校验拒绝 → 该 item 被丢弃并写 `status=502 empty`（23:06 实测日志可查）。
+改为按占比 `own / (own + latin) >= 0.3` 判断「已是目标语言」，并把 `logic` 标记升到
+`mixed-v2.1`。客户端那边有「英语虚词命中 >= 2」这道额外闸门，占比 0.46 的中文段落
+不会被送出来，所以线上可见行为不受影响；宿主这一版随下次重启生效。
+
+## D14：助手回复「没有中文对照」的真正原因——decorate 的键不带 target（2026-11-18 凌晨）
+
+**症状**：用户消息正常显示英文＋ZH 徽章，助手回复整段只有英文，没有中文对照；
+`/api/shadow-bilingual/translate` 手工请求完全正常，`~/.dsh/shadow-bilingual-errors.log`
+也没有新记录（不是 502）。
+
+**怎么定位的**（这套手段以后可以直接复用）：
+1. GUI 无法用 curl 读（`GET /` → 401 `dsh web authentication required`），relay 也对不上
+   （503 `instance-offline`），所以走 `agent-desktop snapshot --app "DeepSeek Harness"
+   --timeout-ms 25000 --max-depth 40`，再用 node 遍历 `data.tree` 过滤 `native_id`。
+   `list-windows` 报的 bounds 不可信（124×146 pt），页面内实测 1280×820。
+2. 临时给助手外层加 `id="sbp-as-<step>"`、给 `apply()` 注入一个 1px 透明
+   `div#sbp-diag-line`（`setInterval` 1s 写模块级 `diagSink`），这样能从无障碍树读到
+   「这一刻的判定结果」。实测读数 `ENS u=10 t=10 m=0 cc=400 inf=0 es=0 rst=0`
+   → 10 个单元都需要翻译、**missing=0**、缓存 400 条已满、没有失败 → 译文早就请求回来了。
+3. 对照代码才发现：`translationsFor()` 建 map 用的键是
+   `unitKey(unit, target.target)`（带目标语言后缀），而渲染处
+   `ShadowMarkdown.decorate(text, map)` **没有传第三个参数 target**，
+   `decorate()` 内部查的是 `translations[unitKey(unit, target)]`（target 为 undefined →
+   后缀是空串）→ 键永远对不上 → 缓存命中却一个字都不渲染，且不报错、不发请求。
+
+**修复**：
+- `lib/markdown.cjs` 的 `decorate(text, translations, target)`：先按 target 精确查；
+  查不到再试「不带后缀的键」；只有在**调用方没传 target** 时才进一步按 `kind\0…\0content`
+  匹配任意后缀（显式传 target 时保持严格，避免同一段英文的中文 / 日文对照串台）。
+- `lib/client.template.js` 的 `translationsFor()`：命中缓存后同时写两份键
+  （带 target 与不带 target），老调用方也不会再漏渲染。
+- 回归测试（`tests/markdown.test.mjs`）：
+  「译文 map 带目标语言后缀、调用方没传 target 时仍然要渲染」、
+  「译文 map 只按单元建键（不带后缀）时也要渲染」；原有
+  「cache keys separate the same source by target language」仍严格要求 target 隔离。
+
+**验证**：`bash tests/run-all.sh` → build、21 个单测、发送链路 22/22、槽位 6 项全过。
+线上同一渲染器热载后，助手消息 `Restart verified — the new host logic is live…`
+下面已经出现 `重启已验证——新的宿主逻辑已生效，而且我已经拿到了插件的修改前后对比测量结果。`
+等中文段落。诊断用的 span / `#sbp-diag-line` / store 计数已全部移除，正式修复保留。
+
+**教训**：这条链路上「翻译成功了」与「渲染出来了」是两件事。以后排查显示问题，
+先确认缓存里有没有值（diag `m=0/cc=…`），再确认查表用的键是否与建表一致。
