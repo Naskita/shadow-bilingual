@@ -188,6 +188,33 @@ Enter 与点击发送按钮都汇入 `facade.submit`，但插件拿不到 facade
 导致 README 与 PLAN 的归属说明指向不存在的仓库。已手工修回。
 改名脚本要先排除 URL、许可证与致谢段落。
 
+## D10：改名后如何让宿主换血（实测结论，2026-11-17）
+
+**宿主半热重载：分两种情况，结论不同。**
+
+1. **加进来的新 bundle —— 可以不重启。**
+   `plugin_manager set_bundle {target:"shadow-bilingual", enabled:false}` 再 `enabled:true`，
+   新插件的宿主半会被**重新挂载**。实测：操作前 `/api/shadow-bilingual/health` 返回
+   `401 unauthorized`（网关对未注册路由的统一应答），操作后立刻变成 `200` 并返回
+   正确的 `configPath: /Users/naskita/.dsh/shadow-bilingual.json`。
+
+2. **从 profile 里删掉的旧 bundle —— 必须重启。**
+   `package.json` 的 `dsh.profile.bundles` 里已经没有 `dsh-bilingual-en` 了，
+   `plugin_manager list_plugins` 里也搜不到它（`set_plugin` 报 `unknown-plugin`），
+   但它在**启动时就挂上去了**，宿主里那个实例还在：
+   - `/api/dsh-bilingual-en/*` 仍返回 200
+   - 界面上出现**两个**「发送译文」复选框（新旧各注册一次 `conversation.composer.dock`，
+     id 分别是 `dsh-bilingual-en-live` 与 `shadow-bilingual-live`）
+   - 会话头出现**两个**「双语 v4.4 ON」复选框（两个 `conversation.session.header.actions`）
+   - 新旧两套 Enter 拦截器并存，正是双重发送的温床
+
+   它已经不在配置树里，所以 `plugin_manager` 无法寻址它——**只能重启**。
+   `touch cordis.patch.yml` 也无效（实测）。
+
+排查教训：`curl` 探路由时先打一条**确定不存在**的路由做对照。本机网关对任何
+未注册的 `/api/*` 都回 `401 unauthorized`，单看这条无法区分「插件没加载」和
+「路径写错」。
+
 ## 未决问题
 
 - 换设备/清 localStorage 后，旧会话没有 ZH 行——可接受，但用户应知情。
