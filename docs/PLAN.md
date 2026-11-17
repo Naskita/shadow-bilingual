@@ -644,3 +644,25 @@ node tests/send-path.cjs lib/client.js
 
 **验证**：`bash tests/run-all.sh` → build + 25 单测 + 发送链路 24/24 + 槽位 7 项全过；
 截图 `docs/preview-input.png` 重拍（输入框内勾选框 + 灰色英文影子），版本 1.0.4。
+
+## D21：新会话首条消息不翻译——首屏输入框没有 inputActions（2026-11-18 凌晨）
+
+**症状**：全新会话里输入中文，直接 Enter 就按原文发出，模型收到中文、也用中文回；等这一轮结束后
+（会话建立、composer 的 dock 面板挂上）后续消息才正常。
+
+**根因**：`installSubmitInterceptor` 的 `gateSend('composer', …)` 在 `composerBridge.actions === null`
+时直接 `return false`（放行），而 `composerBridge.actions` 只由 `conversation.composer.dock` 的
+`LiveTranslationPanel` 从 `props.inputActions` 写入。首屏（hero）输入框没有这个 owner prop，
+于是拦截器认定「接管了也发不出去」→ 放手 → 原文原样发出。
+
+**修法**（不依赖插槽挂载顺序）：
+
+1. 新增 `liveEditorElement()`（activeElement 的 `[contenteditable="true"]`，退回 `[data-lexical-editor="true"]`）、
+   `composerSendButton()`（在 `[data-composer-card]` 内按 `aria-label` 找发送按钮）、`canNativeCommit()`。
+2. `gateSend` 的放行条件改成「既没有 actions、也没有可点的发送按钮」才放弃；只要编辑器 + 按钮都在就接管。
+3. `commitShadow` 的 composer 分支在没有 actions 时走 DOM 兜底：`writeEditorText()`（`execCommand('insertText')`，
+   失败退回 `textContent + InputEvent('input')`）→ 等 60ms 让 Lexical 同步 state → 点自己的发送按钮。
+4. 回归测试：`tests/send-path.cjs` 新增场景 1b（假 document 提供 `__buttons`）断言「首屏无 actions 时先接管、
+   英文写进编辑器、点了发送按钮」；原有场景 1（真拿不到按钮时不吞消息）保持通过。
+
+**版本**：1.0.5。**验证**：`bash tests/run-all.sh` 全绿（26 项发送链路 + 25 单测 + 7 槽位）。

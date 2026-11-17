@@ -1,4 +1,13 @@
 # Changelog
+## [1.0.5] — 2026-11-18
+
+### Fixed
+
+- The **first message in a brand-new conversation** is translated now. The start-screen composer has
+  no `inputActions` yet, so the old code refused to intercept and the raw draft went out. The plugin
+  now falls back to writing the English into the editor and clicking the composer's own send button,
+  and the interception check accepts that path instead of bailing out.
+
 ## [1.0.4] — 2026-11-18
 
 ### Changed

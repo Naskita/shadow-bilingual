@@ -28,6 +28,8 @@ function makeEditable(text) {
     textContent: text,
     classList: { contains: () => false },
     getAttribute: () => null,
+    focus() {},
+    dispatchEvent() {},
   }
   el.closest = (sel) => (sel === '[contenteditable="true"]' ? el : null)
   return el
@@ -41,7 +43,8 @@ const doc = {
   createElement: () => ({ style: {}, setAttribute() {}, appendChild() {} }),
   getElementById: () => null,
   querySelector: () => null,
-  querySelectorAll: () => [],
+  querySelectorAll: (sel) => (sel === 'button' ? (doc.__buttons || []) : []),
+  __buttons: [],
   addEventListener: (t, f) => docListeners.push([t, f]),
   removeEventListener: (t, f) => {
     const i = docListeners.findIndex((e) => e[0] === t && e[1] === f)
@@ -147,6 +150,7 @@ const fetchStub = (url, opts) => {
   const empty = JSON.stringify({})
   return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), text: () => Promise.resolve(empty) })
 }
+g.InputEvent = g.InputEvent || function InputEvent(type, init) { this.type = type; Object.assign(this, init || {}) }
 g.fetch = fetchStub
 
 const primitives = Object.assign((t, p, ...c) => ({ type: t, props: p, kids: c }), {
@@ -208,6 +212,25 @@ async function main() {
   activeEl = makeEditable('这是一段中文草稿')
   const ev1 = pressEnter()
   check('无 inputActions 时不阻止默认行为（不吞消息）', ev1._prevented === false, 'prevented=' + ev1._prevented)
+
+  // --- 场景 1b：新会话首屏没有 inputActions，但编辑器 + 发送按钮都在 → DOM 兜底发英文 ---
+  let sendClicks = 0
+  doc.__buttons = [{
+    getAttribute: (n) => (n === 'aria-label' ? '发送' : null),
+    click: () => { sendClicks += 1 },
+    closest: () => null,
+  }]
+  translateCalls = 0
+  translateMode = 'ok'
+  const heroEditor = makeEditable('帮我看看这个插件为什么会崩')
+  activeEl = heroEditor
+  const ev1b = pressEnter()
+  check('首屏无 actions 但能点发送 → 先接管（不把中文直接放出去）', ev1b._prevented === true, 'prevented=' + ev1b._prevented)
+  await sleep(400)
+  check('首屏兜底：英文写进了编辑器', /[A-Za-z]/.test(String(heroEditor.textContent)) && String(heroEditor.textContent).indexOf('插件') === -1,
+    'text=' + heroEditor.textContent)
+  check('首屏兜底：点了发送按钮', sendClicks === 1, 'clicks=' + sendClicks)
+  doc.__buttons = []
 
   // --- 装配 inputActions（模拟面板挂载时写入 bridge） ---
   const panel = slots.find((s) => s.decl && s.decl.name === 'conversation.composer.dock')
