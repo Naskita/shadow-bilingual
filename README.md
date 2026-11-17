@@ -2,7 +2,8 @@
 
 [中文](#中文) · English
 
-A personal DSH plugin: **English-only conversation with the model, bilingual display for you.** Version `1.0.0`.
+A personal DSH plugin: **English-only conversation with the model, bilingual display for you.**
+Version [`1.0.1`](CHANGELOG.md).
 
 Forked from [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) and reworked as a private,
 local-only build. The upstream assistant-side bilingual rendering is kept; everything else is local
@@ -81,9 +82,18 @@ previous language's wording; it re-translates new paragraphs as needed.
   shows "translating… (will send when done)" and the event is swallowed — nothing is submitted.
   As soon as the translation lands it **sends automatically**; you do not press send again. This is
   what prevents the "original goes out, then the English version goes out" double send.
-- **Failure and stalls do not block you.** A failed translation falls back to the original text
-  immediately; a stalled one falls back after 15 seconds. Sending the original is always better than
-  trapping you in the composer.
+- **Failure, stalls and unusable translations do not block you.** A failed translation falls back to
+  the original text immediately; a stalled one falls back after 15 seconds. A translation is only
+  accepted when it is non-empty, starts with a Latin letter and **differs from your draft** — a reply
+  that merely echoes your Chinese counts as a failure, not as a translation. The panel then says
+  `翻译失败，将发送原文` and the next send goes out as the original. Sending the original is always
+  better than trapping you in the composer.
+- **The host decides "already English" by function words, not by counting letters.** `looksEnglish()`
+  in `lib/index.js` requires `latin >= 2`; text without any CJK passes straight through; text that
+  contains CJK must additionally hit **at least two English function words** (the same
+  `ENGLISH_HINTS` list the client uses). Counting Latin letters alone is wrong: in
+  `帮我装插件hermes-loop` the identifier supplies 10 letters against 5 Han characters, which used to
+  be misread as English and skipped translation.
 - **Queued messages are only rewritten when the row is pure text.** Rows carrying images or files are
   skipped, because rewriting `content` would drop the attachments. Those arrive in the original
   language — a deliberate trade-off.
@@ -150,15 +160,16 @@ Individually:
 ```bash
 node build.mjs                                        # template → lib/client.js
 node --test tests/*.test.mjs                          # 22 unit tests (client + host + markdown)
-node tests/send-path.cjs lib/client.js                # 22 send-path assertions
+node tests/send-path.cjs lib/client.js                # 24 send-path assertions
 node tests/list-slots.cjs lib/client.js               # which slots got registered
 ```
 
 `send-path.cjs` covers: one Enter submits once, repeated Enter while a translation is in flight
 does not duplicate, failure sends the original, a stalled translation times out and sends the
-original, the lock is released after the timeout, a Chinese queue row is rewritten to English, rows
-with attachments are left alone, a failed queue translation keeps the original, the same row is not
-translated twice, and exactly one `document` listener set exists.
+original, a translation that comes back identical to the draft (the "host says it is already
+English" case) releases the gate instead of swallowing every keypress, a Chinese queue row is
+rewritten to English, rows with attachments are left alone, a failed queue translation keeps the
+original, the same row is not translated twice, and exactly one `document` listener set exists.
 
 There is no devtools on the desktop app; verification uses the accessibility tree:
 
@@ -166,13 +177,25 @@ There is no devtools on the desktop app; verification uses the accessibility tre
 agent-desktop snapshot --window-id <DSH window id> --timeout-ms 25000
 ```
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). Recent releases:
+
+- **1.0.1** (2026-11-18) — assistant subtitles render again (decorate key mismatch), mixed-language
+  paragraphs are translated instead of skipped, host "already English" detection uses English
+  function words, and the send gate no longer swallows a draft when a translation comes back
+  unusable.
+- **1.0.0** (2026-11-17) — first tagged local build: three send paths, 18 display languages,
+  per-target cache, selectable display language.
+
 ---
 
 <a id="中文"></a>
 
 # 中文说明
 
-个人使用的 DSH 插件：**跟模型对话全英文，界面显示双语**。版本 `1.0.0`。
+个人使用的 DSH 插件：**跟模型对话全英文，界面显示双语**。
+版本 [`1.0.1`](CHANGELOG.md)。
 
 从 [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) fork 后改造的个人版，仅本机使用。
 助手侧的双语渲染沿用上游，其余为本地定制。
@@ -240,8 +263,14 @@ agent-desktop snapshot --window-id <DSH window id> --timeout-ms 25000
 - **译文没出来之前发不出去**。这时点发送，面板会显示「正在翻译…（翻译完成后发送）」，
   事件被吞掉、不会提交；译文一就绪就**自动替你发出去**，不需要再点一次。
   这是为了避免「原文先发、英文再发」的双发。
-- **翻译失败或卡住不算数**：失败立刻退回、原文照发；卡住 15 秒后同样退回。
+- **翻译失败、卡住、或译文不可用都不挡你**：失败立刻退回、原文照发；卡住 15 秒后同样退回。
+  译文**只有**非空、以拉丁字母开头、且与你草稿不同才算数——模型把中文原样退回来算「失败」，
+  不算「译文」。这时面板会显示 `翻译失败，将发送原文`，再按一次发送就发原文。
   宁可发原文，也不把你锁死在输入框前。
+- **宿主判「已经是英文」靠英语虚词，不靠数拉丁字母。** `lib/index.js` 的 `looksEnglish()`
+  要求 `latin >= 2`；不含中日韩文字的文本直接放过；含中日韩文字的必须再命中
+  **至少两个英语虚词**（与客户端同一份 `ENGLISH_HINTS`）。只数拉丁字母会误判：
+  `帮我装插件hermes-loop` 里标识符贡献 10 个字母、汉字只有 5 个，旧逻辑把它当英文跳过了翻译。
 - **排队消息只处理纯文本行**：带图片/文件的行跳过（改 content 会丢附件）。
   这类消息会以原文送达，是有意的取舍。
 
@@ -305,19 +334,30 @@ plugin_manager install_bundle target=/Users/naskita/Documents/deepseek-harness/d
 ```bash
 node build.mjs                                        # 模板 → lib/client.js
 node --test tests/*.test.mjs                          # 22 项单测（client + host + markdown）
-node tests/send-path.cjs lib/client.js                # 22 项发送链路断言
+node tests/send-path.cjs lib/client.js                # 24 项发送链路断言
 node tests/list-slots.cjs lib/client.js               # 打印注册了哪些槽位
 ```
 
 `send-path.cjs` 覆盖：单次 Enter 只提交一次、翻译在飞时连按不重复、翻译失败发原文、
-翻译挂起超时发原文、超时后锁已释放、队列中文行被译成英文、带附件行不动、
-队列翻译失败保留原文、同一行不重复翻译、document 监听器唯一。
+翻译挂起超时发原文、超时后锁已释放、译文与草稿完全相同（宿主误判「已是英文」）时闸门放行
+而不是每次都吞键、队列中文行被译成英文、带附件行不动、队列翻译失败保留原文、
+同一行不重复翻译、document 监听器唯一。
 
 界面上没有 devtools，验证靠无障碍树：
 
 ```bash
 agent-desktop snapshot --window-id <DSH 窗口 id> --timeout-ms 25000
 ```
+
+## 更新日志
+
+见 [CHANGELOG.md](CHANGELOG.md)。最近两个版本：
+
+- **1.0.1**（2026-11-18）——助手侧中文对照恢复渲染（decorate 的键没带目标语言）；
+  混排段落不再因为出现一个汉字就被整段跳过；宿主判「已经是英文」改用英语虚词；
+  译文不可用时发送闸门不再永久吞掉草稿。
+- **1.0.0**（2026-11-17）——首个本地发布版：三条发送路径、18 种显示语言、
+  按目标语言分别缓存、显示语言可选。
 
 ## License
 

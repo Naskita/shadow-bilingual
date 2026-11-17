@@ -170,6 +170,7 @@ Enter 与点击发送按钮都汇入 `facade.submit`，但插件拿不到 facade
 - 名字：**Shadow Bilingual**。用户提名并经确认；「Shadow」正是输入框里那层影子译文的
   核心机制，比原来的 dsh-bilingual-en 更能说明这个定制版做了什么。
 - 版本：`1.0.0`（原 0.1.0）。功能已完整且用户实测确认可用，不再是 0.x 实验态。
+  （2026-11-18 补记：当前发布版本已升到 `1.0.1`，见 D16 与 `CHANGELOG.md`。）
 - 全量改名：目录 `shadow-bilingual/`、包名、插件 id、路由 `/api/shadow-bilingual`、
   localStorage 键、CSS 前缀 `dsb-` → `sbp-`、全局单例 `__shadowBilingualInterceptor`。
 - 仓库：`https://github.com/Naskita/shadow-bilingual`（**私有**），首次提交 `ad52818`。
