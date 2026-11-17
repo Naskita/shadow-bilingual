@@ -266,14 +266,15 @@ async function main() {
   check('翻译在飞时连按 Enter 仍然只提交一次', submitCount === 1, 'submit=' + submitCount)
   check('连按期间第二次按键被吞', ev3b._prevented === true, 'prevented=' + ev3b._prevented)
 
-  // --- 场景 4：翻译失败 → 原文照发，不阻塞 ---
+  // --- 场景 4：翻译失败 → 自动把原文发出去，不需要用户再按一次 ---
   setDraftCalls = []
   submitCount = 0
   translateMode = 'fail'
   activeEl = makeEditable('第三段中文草稿')
-  pressEnter()
-  await sleep(400)
-  check('翻译失败不吞消息（放行原文）', submitCount === 0, 'submit=' + submitCount)
+  const ev4a = pressEnter()
+  check('翻译失败：这一次先被接管（不中文原文直发）', ev4a._prevented === true, 'prevented=' + ev4a._prevented)
+  await sleep(600)
+  check('翻译失败后自动发原文（用户不必再按一次）', submitCount === 1, 'submit=' + submitCount)
   const ev4b = pressEnter()
   check('失败后再次 Enter 放行给原生提交', ev4b._prevented === false, 'prevented=' + ev4b._prevented)
 

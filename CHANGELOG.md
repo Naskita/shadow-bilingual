@@ -1,4 +1,12 @@
 # Changelog
+## [1.0.8] — 2026-11-18
+
+### Fixed
+
+- If the translation for a message the user already tried to send fails (network error, 502, timeout),
+  the plugin now sends the original draft itself instead of leaving it in the box waiting for a second
+  Enter. "Send the original when translation fails" is now what actually happens, in one press.
+
 ## [1.0.7] — 2026-11-18
 
 ### Fixed
