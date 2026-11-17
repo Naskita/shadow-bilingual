@@ -759,3 +759,63 @@ test('拉丁兄弟语言的草稿不能被当成英文原样放行', async () =>
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('英文译文里出现 me / no 这类共用词时不能判成西语（否则整条 502 发不出去）', async () => {
+  // 现场（2026-11-18 03:33）：中文句子翻译成英文后，
+  // 「I need you to help me … Help me check …」里 me 命中西语虚词表两次，
+  // detectLatinLanguage 判成 es → looksEnglish 为 false → validTranslationText 拒绝
+  // → translateItems 抛 502 empty，用户的首条消息永远发不出去。
+  const home = mkdtempSync(path.join(tmpdir(), 'shadow-bilingual-en-'))
+  const previousHome = process.env.DSH_HOME
+  const previousKey = process.env.DEEPSEEK_API_KEY
+  delete process.env.DEEPSEEK_API_KEY
+  process.env.DSH_HOME = home
+
+  let handler = null
+  const ctx = {
+    webServer: {
+      register(options) {
+        handler = options.handler
+      },
+    },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+  }
+
+  const source = '帮我看下第一条消息为什么发不出去。'
+  const english = 'Help me check why the first message cannot be sent. Let me know what you find.'
+
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (_url, options) => {
+    const items = JSON.parse(JSON.parse(options.body).messages[1].content).items
+    const content = JSON.stringify({ items: items.map((item) => ({ id: item.id, text: english })) })
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify({ choices: [{ message: { content } }] })
+      },
+    }
+  }
+
+  try {
+    const mod = await import('../lib/index.js')
+    mod.apply(ctx)
+    await call(handler, 'POST', '/config', { apiKey: 'sk-en-1234567890' })
+    const result = await call(handler, 'POST', '/translate', {
+      items: [{ id: 1, text: source, target: 'en' }],
+    })
+    assert.equal(result.status, 200, JSON.stringify(result.json))
+    assert.equal(result.json.items.length, 1)
+    assert.equal(result.json.items[0].text, english)
+  } finally {
+    try {
+      if (handler !== null) await call(handler, 'POST', '/config', { apiKey: '' })
+    } catch {
+      // 清理失败不影响测试结论
+    }
+    globalThis.fetch = originalFetch
+    process.env.DSH_HOME = previousHome
+    if (previousKey !== undefined) process.env.DEEPSEEK_API_KEY = previousKey
+    rmSync(home, { recursive: true, force: true })
+  }
+})

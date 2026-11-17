@@ -666,3 +666,22 @@ node tests/send-path.cjs lib/client.js
    英文写进编辑器、点了发送按钮」；原有场景 1（真拿不到按钮时不吞消息）保持通过。
 
 **版本**：1.0.5。**验证**：`bash tests/run-all.sh` 全绿（26 项发送链路 + 25 单测 + 7 槽位）。
+
+
+## D22：英文译文被误判成西语 → 502，新会话第一条永远发不出去（2026-11-18 凌晨）
+
+**现场**：`~/.dsh/shadow-bilingual-errors.log` 03:33:28
+`status=502 empty model=deepseek-chat items=[{"id":1,"text":"我需要你帮我用英文回答…","target":"en"}]`，
+而同一行的 `content=` 里模型明明给出了合格英文。
+
+**根因**：`validTranslationText` 对 `target: 'en'` 调 `looksEnglish`，后者在 `foreign === 0` 时要求
+`detectLatinLanguage(text) === null`。`detectLatinLanguage` 用 `LATIN_HINTS` 给十种拉丁语言计分，
+`me`、`no`、`de`、`la` 这类词同时在英文和西语里出现；`Help me … Let me …` 就让西语拿到 2 分 →
+判成 `es` → 校验失败 → `translateItems` 抛 `502 empty`。客户端 `gateSend` 于是把消息一直扣着。
+
+**修法**：计分时跳过 `ENGLISH_HINTS` 里的英文虚词；并要求最佳语言**严格多于**第二名，
+一个命中或打平一律返回 `null`（当作「不是别的语言」）。`lib/index.js` 与 `lib/markdown.cjs` 同步。
+
+**验证**：`tests/host.test.mjs` 新增 `英文译文里出现 me / no 这类共用词时不能判成西语`；
+真实 API 探针四条全 200（中文→英、长句中文→英、英→西、中文夹标识符原样）。
+**版本**：1.0.7。

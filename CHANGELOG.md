@@ -1,4 +1,14 @@
 # Changelog
+## [1.0.7] — 2026-11-18
+
+### Fixed
+
+- A Chinese message whose English translation contained words like `me`, `no`, `de` (common in several
+  Latin-script languages) could be rejected as "not English": the Latin-language detector counted
+  two hits and reported Spanish, the transcript validator then threw `502 empty` and the message never
+  left the composer. English function words are now ignored when scoring, and a tie between languages
+  is treated as "not another language", so English translations validate again.
+
 ## [1.0.6] — 2026-11-18
 
 ### Fixed
