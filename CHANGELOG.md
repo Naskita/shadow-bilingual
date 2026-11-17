@@ -4,6 +4,32 @@ All notable changes to Shadow Bilingual are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] — 2026-11-18
+
+The display language now really works for every language the plugin offers, and the plugin finally
+has its own name, icon and screenshot.
+
+### Added
+
+- Chinese name **影译** and a 512×512 icon (`docs/icon.png`).
+- A real screenshot of the running desktop app (`docs/preview.png`), replacing the drawn sketch.
+
+### Fixed
+
+- Ten Latin-script display languages — `es fr de pt it nl pl tr vi id` — never translated anything:
+  the host treated *any* text containing Latin letters as already in the target language. Detection
+  now identifies the source language (`detectLatinLanguage`) and compares it with the target.
+- Simplified Chinese was never converted to Traditional (or back): "already in the target language"
+  now tells `zh` from `zh-TW` (`looksTraditional`), and `translationTarget` keeps them apart.
+- Han-only Chinese with a `ja` target was accepted as Japanese: Japanese now requires kana.
+- Spanish/German drafts were mistaken for English and sent unchanged: `looksEnglish` now also demands
+  that the text is not another Latin-script language.
+
+### Changed
+
+- The session-header toggle shows the plugin's own name and build version (`影译 v1.0.3`) instead of
+  the inherited `双语 v4.4`; the label is read from `package.json` at build time.
+
 ## [1.0.2] — 2026-11-18
 
 Packaging release so the repository can be listed in the DSH plugin directory. Behaviour is identical

@@ -232,3 +232,41 @@ test('译文 map 只按单元建键（不带后缀）时也要渲染', () => {
   assert.ok(md.decorate(source, map).includes('已确认宿主代码是新的。'))
   assert.ok(md.decorate(source, map, 'zh').includes('已确认宿主代码是新的。'))
 })
+
+test('拉丁字母显示语言：源语言要认出来，简繁要分开', () => {
+  // 回归（2026-11-18 实测）：18 种显示语言里 es/fr/de/pt/it/nl/pl/tr/vi/id 全部拿不到译文，
+  // 因为客户端把西语/法语… 都当成 en，宿主又「看到拉丁字母就说已经是目标语言」。
+  const samples = {
+    es: 'Esta configuración no tiene el campo localLanguage.',
+    fr: 'Ce fichier ne contient pas le champ localLanguage.',
+    de: 'Diese Datei enthält kein Feld localLanguage.',
+    pt: 'Este arquivo não tem o campo localLanguage.',
+    it: 'Questo file non contiene il campo localLanguage.',
+    nl: 'Dit bestand heeft geen localLanguage veld.',
+    pl: 'Ten plik nie ma pola localLanguage.',
+    tr: 'Bu dosyada localLanguage alanı yok.',
+    vi: 'Tệp này không có trường localLanguage.',
+    id: 'Berkas ini tidak memiliki kolom localLanguage.',
+  }
+  for (const [code, text] of Object.entries(samples)) {
+    assert.equal(md.languageOf(text), code, `${code} 正文要被认成 ${code}`)
+    // 已经是这种语言：显示侧跳过，不浪费请求
+    assert.equal(md.translationTarget({ kind: 'paragraph', content: text }, { mode: 'local', localLanguage: code }), null)
+    // 换成中文显示：必须翻
+    assert.equal(md.translationTarget({ kind: 'paragraph', content: text }, { mode: 'local', localLanguage: 'zh' }).target, 'zh')
+  }
+
+  // 英文正文送去西语：必须翻，不能因为「有拉丁字母」就算已经是西语
+  const english = { kind: 'paragraph', content: 'The crash loop came from a restart script.' }
+  assert.deepEqual(md.translationTarget(english, { mode: 'local', localLanguage: 'es' }), { source: 'en', target: 'es' })
+
+  // 简繁也是两种不同的显示语言
+  const simplified = { kind: 'paragraph', content: '这个配置文件里没有 localLanguage 字段。' }
+  const traditional = { kind: 'paragraph', content: '這個設定檔裡沒有 localLanguage 欄位。' }
+  assert.equal(md.languageOf(simplified.content), 'zh')
+  assert.equal(md.languageOf(traditional.content), 'zh-TW')
+  assert.deepEqual(md.translationTarget(simplified, { mode: 'local', localLanguage: 'zh-TW' }), { source: 'zh', target: 'zh-TW' })
+  assert.deepEqual(md.translationTarget(traditional, { mode: 'local', localLanguage: 'zh' }), { source: 'zh-TW', target: 'zh' })
+  assert.equal(md.translationTarget(traditional, { mode: 'local', localLanguage: 'zh-TW' }), null)
+  assert.equal(md.translationTarget(simplified, { mode: 'local', localLanguage: 'zh' }), null)
+})

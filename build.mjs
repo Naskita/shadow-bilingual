@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('.', import.meta.url))
 const markdown = readFileSync(`${root}lib/markdown.cjs`, 'utf8')
 const template = readFileSync(`${root}lib/client.template.js`, 'utf8')
+const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8'))
 
 const marker = '    /*__INLINE_MARKDOWN__*/'
 if (!template.includes(marker)) throw new Error('client.template.js 里找不到内联标记')
@@ -23,6 +24,7 @@ ${markdown}
       return module.exports
     })()`
 
-const output = template.replace(marker, inlined)
+const versioned = template.replaceAll('__SBP_VERSION__', `v${pkg.version}`)
+const output = versioned.replace(marker, inlined)
 writeFileSync(`${root}lib/client.js`, output, 'utf8')
 console.log(`built lib/client.js (${Buffer.byteLength(output, 'utf8')} bytes)`)

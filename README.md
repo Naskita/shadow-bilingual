@@ -1,9 +1,13 @@
-# Shadow Bilingual
+# Shadow Bilingual · 影译
+
+<img src="docs/icon.png" width="72" height="72" align="right" alt="影译 icon" />
 
 [中文](#中文) · English
 
 A DSH plugin: **English-only conversation with the model, bilingual display for you.**
-Version [`1.0.2`](CHANGELOG.md).
+Chinese name: **影译**. Version [`1.0.3`](CHANGELOG.md).
+
+![Shadow Bilingual in the DSH desktop app — assistant replies keep the English text and gain a local-language translation below each block, and the 影译 toggle sits in the session header.](docs/preview.png)
 
 Forked from [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) and reworked around
 the *send* path: upstream keeps the assistant-side bilingual rendering, and this fork adds English
@@ -205,6 +209,10 @@ agent-desktop snapshot --window-id <DSH window id> --timeout-ms 25000
 
 See [CHANGELOG.md](CHANGELOG.md). Recent releases:
 
+- **1.0.3** (2026-11-18) — Chinese name **影译**, an icon and a real screenshot; ten
+  Latin-script display languages and Simplified↔Traditional Chinese now actually translate (they
+  used to be skipped as "already translated"); the header toggle now shows 影译 with this package's
+  version.
 - **1.0.2** (2026-11-18) — packaging only: `repository`/`bugs`/`homepage` in the manifest, the
   bogus `react` peer dependency removed (React comes from the DSH client runtime), an accurate
   preview image, and an **Install** section for `dsh plugin --profile desktop add github:...`.
@@ -222,7 +230,7 @@ See [CHANGELOG.md](CHANGELOG.md). Recent releases:
 # 中文说明
 
 DSH 插件：**跟模型对话全英文，界面显示双语**。
-版本 [`1.0.2`](CHANGELOG.md)。
+中文名：**影译**。版本 [`1.0.3`](CHANGELOG.md)。
 
 从 [Hemuchuan/dsh-bilingual](https://github.com/Hemuchuan/dsh-bilingual) fork 后围绕**发送链路**改造：
 助手侧的双语渲染沿用上游，本 fork 增加了英文影子输入、输入框/插话框/消息队列三条路径的全英文发送，
@@ -400,8 +408,10 @@ agent-desktop snapshot --window-id <DSH 窗口 id> --timeout-ms 25000
 
 ## 更新日志
 
-见 [CHANGELOG.md](CHANGELOG.md)。最近两个版本：
+见 [CHANGELOG.md](CHANGELOG.md)。最近三个版本：
 
+- **1.0.3**（2026-11-18）——中文名定为「影译」，补上图标与真实截图；十种拉丁字母显示语言
+  与简繁中文真正开始翻译（此前被当成「已翻译」跳过）；会话头开关显示「影译」与本包版本号。
 - **1.0.2**（2026-11-18）——只改打包：清单补上 `repository`/`bugs`/`homepage`，删掉多余的
   `react` peer（React 由 DSH 客户端运行时提供），换成与当前界面一致的示意图，README 增加
   面向使用者的「安装」小节（`dsh plugin --profile desktop add github:...`）。

@@ -605,3 +605,157 @@ test('中文句子夹英文标识符、目标是英文时仍然要翻', async ()
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('拉丁字母显示语言与简繁：源语言不对就不许 passthrough', async () => {
+  // 回归（2026-11-18 实测）：宿主旧 alreadyInTarget 只要看到拉丁字母就返回 true，
+  // 于是「英文 → es/fr/de/pt/it/nl/pl/tr/vi/id」全被当成「已经是目标语言」原样退回，
+  // 18 种显示语言里 10 种永远没有译文（HTTP 200、耗时 ~650ms、日志无声）。
+  const home = mkdtempSync(path.join(tmpdir(), 'shadow-bilingual-latin-'))
+  const previousHome = process.env.DSH_HOME
+  const previousKey = process.env.DEEPSEEK_API_KEY
+  delete process.env.DEEPSEEK_API_KEY
+  process.env.DSH_HOME = home
+
+  let handler = null
+  const ctx = {
+    webServer: {
+      register(options) {
+        handler = options.handler
+      },
+    },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+  }
+
+  const originalFetch = globalThis.fetch
+  let requests = 0
+  globalThis.fetch = async (_url, options) => {
+    requests += 1
+    const items = JSON.parse(JSON.parse(options.body).messages[1].content).items
+    const content = JSON.stringify({
+      items: items.map((item) => ({ id: item.id, text: `[${item.target}] ${item.text}` })),
+    })
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify({ choices: [{ message: { content } }] })
+      },
+    }
+  }
+
+  try {
+    const mod = await import('../lib/index.js')
+    mod.apply(ctx)
+    await call(handler, 'POST', '/config', { apiKey: 'sk-latin-1234567890' })
+
+    const english = 'The crash loop came from a restart script.'
+    const spanish = 'El bucle de fallos vino de un script de reinicio, pero el panel no muestra nada.'
+    const simplified = '这个配置文件里没有 localLanguage 字段。'
+    const traditional = '這個設定檔裡沒有 localLanguage 欄位。'
+
+    // 英文 → 十种拉丁字母显示语言：每一种都必须真的发请求
+    const latinTargets = ['es', 'fr', 'de', 'pt', 'it', 'nl', 'pl', 'tr', 'vi', 'id']
+    requests = 0
+    const latinResult = await call(handler, 'POST', '/translate', {
+      items: latinTargets.map((target, index) => ({ id: index + 1, text: english, target })),
+    })
+    assert.equal(latinResult.status, 200)
+    assert.ok(requests >= 1, '十种拉丁字母语言不能因为「有字母」就被跳过')
+    for (const item of latinResult.json.items) {
+      assert.ok(item.text.startsWith('['), `${item.id} 必须拿到模型译文，实际是原文`)
+    }
+
+    // 西语正文 → es：这才是「已经是目标语言」，不许发请求
+    requests = 0
+    const spaResult = await call(handler, 'POST', '/translate', {
+      items: [{ id: 1, text: spanish, target: 'es' }],
+    })
+    assert.equal(spaResult.json.items[0].text, spanish)
+    assert.equal(requests, 0, '西语正文发给 es 目标不该再打模型')
+
+    // 西语正文 → 法语：必须翻
+    requests = 0
+    await call(handler, 'POST', '/translate', { items: [{ id: 2, text: spanish, target: 'fr' }] })
+    assert.equal(requests, 1, '西语正文发给法语目标必须翻译')
+
+    // 简繁：简体正文 → zh-TW 要请求；繁体正文 → zh-TW 不请求
+    requests = 0
+    await call(handler, 'POST', '/translate', { items: [{ id: 3, text: simplified, target: 'zh-TW' }] })
+    assert.equal(requests, 1, '简体正文发给 zh-TW 必须真的转一次')
+
+    requests = 0
+    const tradResult = await call(handler, 'POST', '/translate', {
+      items: [{ id: 4, text: traditional, target: 'zh-TW' }],
+    })
+    assert.equal(tradResult.json.items[0].text, traditional)
+    assert.equal(requests, 0, '繁体正文发给 zh-TW 不该再打模型')
+
+    // 日文目标：纯汉字文本不是日文，必须请求（中文正文 → ja）
+    requests = 0
+    await call(handler, 'POST', '/translate', { items: [{ id: 5, text: simplified, target: 'ja' }] })
+    assert.equal(requests, 1, '纯汉字文本发给 ja 必须翻译，不能当「已是日文」')
+  } finally {
+    globalThis.fetch = originalFetch
+    process.env.DSH_HOME = previousHome
+    if (previousKey !== undefined) process.env.DEEPSEEK_API_KEY = previousKey
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('拉丁兄弟语言的草稿不能被当成英文原样放行', async () => {
+  // 回归（2026-11-18 实测）：西语草稿 → target en 时被 looksEnglish 的「纯拉丁字母即英文」放过，
+  // 原样返回西语；客户端判定「译文不可用」，于是把西语原文直接发给模型。
+  const home = mkdtempSync(path.join(tmpdir(), 'shadow-bilingual-drafts-'))
+  const previousHome = process.env.DSH_HOME
+  const previousKey = process.env.DEEPSEEK_API_KEY
+  delete process.env.DEEPSEEK_API_KEY
+  process.env.DSH_HOME = home
+
+  let handler = null
+  const ctx = {
+    webServer: { register(options) { handler = options.handler; } },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+  }
+
+  const originalFetch = globalThis.fetch
+  let requests = 0
+  globalThis.fetch = async (_url, options) => {
+    requests += 1
+    const items = JSON.parse(JSON.parse(options.body).messages[1].content).items
+    const content = JSON.stringify({
+      items: items.map((item) => ({ id: item.id, text: `The panel does not show the last error (#${item.id}).` })),
+    })
+    return {
+      ok: true,
+      status: 200,
+      async text() { return JSON.stringify({ choices: [{ message: { content } }] }); },
+    }
+  }
+
+  try {
+    const mod = await import('../lib/index.js')
+    mod.apply(ctx)
+    await call(handler, 'POST', '/config', { apiKey: 'sk-drafts-1234567890' })
+
+    const spanish = 'El panel no muestra el último error, pero la traducción funciona.'
+    const german = 'Das Panel zeigt nicht den letzten Fehler, aber die Übersetzung funktioniert.'
+
+    requests = 0
+    const result = await call(handler, 'POST', '/translate', {
+      items: [
+        { id: 1, text: spanish, target: 'en' },
+        { id: 2, text: german, target: 'en' },
+      ],
+    })
+    assert.equal(result.status, 200)
+    assert.equal(requests, 1, '西语/德语草稿必须真的翻成英文')
+    for (const item of result.json.items) {
+      assert.match(item.text, /^The panel/, `${item.id} 应该拿到英文改写，而不是原文`)
+    }
+  } finally {
+    globalThis.fetch = originalFetch
+    process.env.DSH_HOME = previousHome
+    if (previousKey !== undefined) process.env.DEEPSEEK_API_KEY = previousKey
+    rmSync(home, { recursive: true, force: true })
+  }
+})

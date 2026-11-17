@@ -558,3 +558,39 @@ node tests/send-path.cjs lib/client.js
 - 上游 `Hemuchuan/dsh-bilingual` **已经在列表里**，reviewer 有理由问「这是不是重复」。条目描述必须
   突出差异：本 fork 改的是**发送侧**（英文影子输入 + 三条路径全英文发送 + 本地语言对照可选），
   上游只有助手侧的双语渲染。
+
+## D18：18 种显示语言逐语言实测；只有中文能翻（2026-11-18 凌晨）
+
+**现场**：用户看不懂其他语言，要求把 18 种显示语言逐个实测一遍。对运行中的宿主直接
+`POST /api/shadow-bilingual/translate`（脚本 `/tmp/test-langs.mjs`）：
+
+| 目标 | 修前 | 原因 |
+| --- | --- | --- |
+| `zh` | ✅ | — |
+| `ja` | 只有假名才翻 | `SCRIPT_COUNT.ja` 含汉字区间，纯汉字被判「已是日文」 |
+| `zh-TW` | ❌ 从不转换 | 简繁共用 `script:'zh'`，占比判定把简体当已达成 |
+| `ko ru ar hi th` | ✅ | 文字系统不同，占比判定有效 |
+| `es fr de pt it nl pl tr vi id` | ❌ 全部原样返回 | `alreadyInTarget` 里 `if (spec.script === 'latin') return true`——出现任何拉丁字母就判「已是目标语言」 |
+
+**决定**：
+
+1. 宿主 `alreadyInTarget` 按目标分别判：`latin` 系语言用 `detectLatinLanguage()`（倒问号/ß/ã/õ/
+   ăâđêôơư 等形态特征 + 十种语言各 30–40 个虚词计分）判断源语言是否等于目标；`zh`/`zh-TW` 用
+   `looksTraditional()`（繁体字表命中 > 简体字表命中）；`ja` 必须先有假名；其余语言保持占比。
+2. `looksEnglish` 的 `foreign === 0` 分支也要排除「另一个拉丁语言」，否则西语/德语草稿会被当成
+   英文原样放行。
+3. 客户端 `markdown.cjs` 同步：`languageOf()` 能认出十种兄弟语言与简繁，`sameLanguage()` 把
+   `zh` 与 `zh-TW` 视为不同目标（此前 `source === localBase` 会把简体→繁体的请求直接吞掉）。
+4. 两端的 `LATIN_HINTS` 必须逐字一致，否则「客户端认为该翻、宿主认为已达标」会静默空转。
+
+**验证**：
+
+- `bash tests/run-all.sh` → build + 25 单测 + 发送链路 24/24 + 槽位 6 项全过。
+- 真实 API 端到端（`/tmp/probe18.mjs`，复用 `~/.dsh` 的真 Key，直接 import `lib/index.js`）：
+  18 种目标全部 `ok`、`status 200`、1.2–1.9 s 真实模型调用；额外验证西语/日语/中文草稿发
+  `target:en` 都被正确改成英文。报告 `/tmp/probe18.json`。
+- 运行中的应用仍是旧宿主代码，界面上的这 10 种语言要正常退出重开后才生效。
+
+**同批**：插件中文名定为 **影译**；`docs/icon.png`（512×512，深色圆角 + 白「文」蓝「A」）；
+`docs/preview.png` 换成运行时真实截图；会话头开关从继承来的「双语 v4.4」改成「影译 + 本包版本号」，
+版本号由 `build.mjs` 从 `package.json` 注入（`__SBP_VERSION__`），避免与另一个双语插件混淆。
