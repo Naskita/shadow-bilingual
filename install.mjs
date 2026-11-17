@@ -9,7 +9,9 @@
  *   2. dsh.profile.bundles 加入 "shadow-bilingual"
  *   3. profiles/<profile>/node_modules/shadow-bilingual → 本目录（junction / symlink）
  *
- * 不做：不启动/重启 DSH，不跑 pnpm install。装完请手动重启 DSH。
+ * 不做：不启动/重启 DSH，不跑 pnpm install，也不给任何进程发信号。
+ * 装完请正常退出并重开 DSH；不确定宿主是否需要重开时，先跑
+ * `./scripts/apply-changes.sh`（退出码 2 就是需要重开）。
  */
 
 import { copyFileSync, lstatSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs'

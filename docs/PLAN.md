@@ -225,11 +225,13 @@ Enter 与点击发送按钮都汇入 `facade.submit`，但插件拿不到 facade
    进程命令行极长且路径含空格，`pgrep` 返回空。必须用
    `ps ax -o pid=,command= | grep 'dsh-desktop-host/lib/index.js' | grep -v grep`。
 
-5. **HTTP 端口每次启动都会变**（历史值：55443 → 65285）。重启脚本不能写死端口，
-   要从宿主进程的监听 socket 现取：
+5. **HTTP 端口每次启动都会变**（历史值：55443 → 65285 → 51055 → 54323）。任何脚本都不能
+   写死端口，要从宿主进程的监听 socket 现取，再逐个探
+   `/api/shadow-bilingual/health`：
    `lsof -nP -iTCP -sTCP:LISTEN -a -p <pid> | awk 'NR>1{split($9,a,":"); print a[n]}'`。
-   `scripts/restart-dsh.sh` 已改成这样，并在报告里带上 `hasLocalLanguage` 作为
-   「新代码是否真的跑起来」的判据。
+   原来做这件事的 `scripts/restart-dsh.sh` 会顺带 `kill` 宿主，已于 2026-11-18 从仓库删除
+   （见「事故复盘」与 D15）；替代品 `scripts/apply-changes.sh` 只读端口和健康接口，
+   靠 `logic` 标记判断宿主是否过期，**不发任何信号**。
 
 6. **`credentials` 服务不能在 `apply()` 里取一次就缓存。**
    插件常常是在应用启动**之后**才被 `plugin_manager` 挂载的，那一刻凭据服务未必
@@ -361,6 +363,9 @@ node tests/send-path.cjs lib/client.js
   `osascript quit` → `kill 宿主 PID` → `open -a`。宿主被 SIGTERM 杀死，Electron 主进程
   判定「宿主意外停止」→ 弹崩溃窗。`/tmp/shadow-restart-report.json` 的多次写入是物证。
 - **结论**：不要用 kill 宿主的办法让插件生效；用插件管理的启用/停用，或正常退出重开。
+- **已处置（2026-11-18）**：`scripts/restart-dsh.sh` 已从仓库删除（`/tmp` 里的副本一起删），
+  仓库不再有任何杀宿主进程的脚本；替代品 `scripts/apply-changes.sh` 只重建客户端、可选跑自检，
+  并通过 `/health` 的 `logic` 标记报告宿主是否需要重开，需要时提示人正常退出（见 D15）。
 - 顺带确认：`dsh-desktop-automation@0.1.1` 调用 `scope.settings.register`，而宿主
   0.2.2-rc.3 的 settings 已换成 `SettingsForms`，属版本不兼容（非崩溃主因）。
 
@@ -398,7 +403,8 @@ node tests/send-path.cjs lib/client.js
 **生效方式**：客户端改动需要刷新页面；宿主改动需要重载插件。实测
 `plugin_manager set_bundle`（停用→启用）**不会**重新 import 被 symlink 的宿主模块
 （`/health` 新增的 `logic: 'mixed-v2'` 标记没有出现），所以宿主侧要正常退出重开应用
-（**不要**再用 `scripts/restart-dsh.sh`）。`/health` 现在会回报 `logic` 字段，
+（`scripts/restart-dsh.sh` 已删除；用 `./scripts/apply-changes.sh` 判断宿主是否过期，
+退出码 2 就说明该正常退出重开）。`/health` 现在会回报 `logic` 字段，
 重开后可据此确认新判据已生效。
 
 **D13 补充（同一个晚上，线上实测后）**：宿主第一版判据是「目标文字数 >= 拉丁字母数」，
@@ -448,3 +454,32 @@ node tests/send-path.cjs lib/client.js
 
 **教训**：这条链路上「翻译成功了」与「渲染出来了」是两件事。以后排查显示问题，
 先确认缓存里有没有值（diag `m=0/cc=…`），再确认查表用的键是否与建表一致。
+
+## D15：删掉会杀宿主的重启脚本，换成只读的 apply-changes（2026-11-18）
+
+**决定**：删除 `scripts/restart-dsh.sh`（以及 `/tmp` 里的副本），新增
+`scripts/apply-changes.sh`；README 英文/中文两节与 `install.mjs` 的说明同步改写。
+
+**理由**：那个脚本「让旧 bundle 彻底退场」的能力，靠的是 `osascript quit` 之后
+`kill <宿主 PID>`。宿主被 SIGTERM 杀死时 Electron 会报 "app stopped unexpectedly" 并弹修复
+对话框——2026-11-17 的崩溃循环就是它造成的（见「事故复盘」）。便利性不能建立在
+「随时可能把应用打死」上，而且真正需要它的场景（旧 bundle 残留在宿主里）已经不存在了：
+现在的宿主半只有一个 symlink 进来的模块，改动靠「正常退出重开」加载即可。
+
+**新脚本做什么**：
+1. `node build.mjs` 重建 `lib/client.js`（带 `--test` 时改走 `tests/run-all.sh`）；
+2. 用 `ps ax -o pid=,command= | grep dsh-desktop-host/lib/index.js` 找宿主 PID
+   （`pgrep -f` 在本机匹配不到，见 D10 第 4 条），用 `lsof` 列它监听的端口；
+3. 逐个端口探 `/api/shadow-bilingual/health`，读出 `logic` 标记，与 `lib/index.js`
+   源码里的期望值比对，报告宿主是否还在跑旧代码。
+
+**新脚本不做什么**：不发任何信号、不退出应用、不改 profile、不写配置文件。
+
+**Agent 约定（`git pull` 之后直接可用）**：
+- 退出码 `0` → 客户端已重建，宿主也是当前代码（或应用没运行），无需人介入；
+- 退出码 `2` → 宿主半过期，需要人正常退出（⌘Q）再重开；脚本已经把这句话打印出来；
+- 退出码 `1` → 构建或自检失败，先修再谈生效。
+
+**同步改动**：README 两节都改掉了「宿主侧改动需要重装」的旧说法（实测重装不会重新 import
+宿主模块），并写清「绝不 kill 宿主」；自检项数 `15` → `21`；`package.json` 增加
+`npm run apply` / `npm run check` 两个入口，方便 Agent 记住一条命令。

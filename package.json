@@ -23,6 +23,7 @@
   },
   "files": [
     "lib",
+    "scripts",
     "docs",
     "cordis.patch.yml",
     "README.md"
@@ -46,5 +47,10 @@
       ]
     }
   },
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "bash tests/run-all.sh",
+    "apply": "bash scripts/apply-changes.sh"
+  }
 }

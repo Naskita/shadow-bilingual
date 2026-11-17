@@ -112,11 +112,30 @@ cd /Users/naskita/Documents/deepseek-harness/default-workspace/shadow-bilingual
 node build.mjs     # lib/markdown.cjs + lib/client.template.js → lib/client.js
 ```
 
-Installing (after editing `lib/client.js` the client half usually hot-reloads; host-side changes need a reinstall):
+First-time install (links this checkout into the profile):
 
 ```
 plugin_manager install_bundle target=/Users/naskita/Documents/deepseek-harness/default-workspace/shadow-bilingual
 ```
+
+Applying a change after that — whether you edited a file yourself or pulled a new commit:
+
+```bash
+./scripts/apply-changes.sh          # rebuild lib/client.js, then report whether the host half is stale
+./scripts/apply-changes.sh --test   # same, plus the full self-check
+```
+
+The script only reads; it never signals the app. What it tells you:
+
+- **Client half** (`lib/client.js`) hot-loads into the open window. Press `⌘R` if it does not.
+- **Host half** (`lib/index.js`) is imported once, when the app process starts. `plugin_manager
+  set_bundle`, and even remove + reinstall, do **not** re-import a symlinked host module (measured —
+  see `docs/PLAN.md` D10). The script recognises that state (the host compiles a `logic` marker into
+  `/health`), exits `2`, and prints the only safe remedy: **quit normally (`⌘Q`), then reopen**.
+
+**Never kill the host to force a reload.** SIGTERM makes Electron report "app stopped unexpectedly"
+and show its crash dialog — that is exactly what produced the 2026-11-17 restart loop. This repo
+deliberately ships no script that does it.
 
 ## Self-check
 
@@ -130,7 +149,7 @@ Individually:
 
 ```bash
 node build.mjs                                        # template → lib/client.js
-node --test tests/*.test.mjs                          # 15 unit tests (client + host + markdown)
+node --test tests/*.test.mjs                          # 21 unit tests (client + host + markdown)
 node tests/send-path.cjs lib/client.js                # 22 send-path assertions
 node tests/list-slots.cjs lib/client.js               # which slots got registered
 ```
@@ -249,11 +268,29 @@ cd /Users/naskita/Documents/deepseek-harness/default-workspace/shadow-bilingual
 node build.mjs     # lib/markdown.cjs + lib/client.template.js → lib/client.js
 ```
 
-安装（改完 `lib/client.js` 后客户端通常会自动热加载，宿主侧改动需要重装）：
+首次安装（把本目录 link 进 profile）：
 
 ```
 plugin_manager install_bundle target=/Users/naskita/Documents/deepseek-harness/default-workspace/shadow-bilingual
 ```
+
+之后的每次生效——无论是自己改了文件，还是 `git pull` 拿到新提交：
+
+```bash
+./scripts/apply-changes.sh          # 重建 lib/client.js，再报告宿主半是否过期
+./scripts/apply-changes.sh --test   # 同上，并跑完整自检
+```
+
+脚本只读，不会给应用发任何信号。它报告两件事：
+
+- **客户端半**（`lib/client.js`）会热加载进已打开的窗口；没生效就按一次 `⌘R`。
+- **宿主半**（`lib/index.js`）只在应用进程启动时 import 一次。`plugin_manager set_bundle`
+  甚至 remove + 重装都**不会**重新 import 被 symlink 的宿主模块（实测，见 `docs/PLAN.md` D10）。
+  脚本能认出这个状态（宿主把 `logic` 标记编译进 `/health`），退出码 `2`，
+  并打印唯一安全做法：**正常退出（`⌘Q`）再重开**。
+
+**不要用 kill 宿主的办法让插件生效。** SIGTERM 会让 Electron 报 "app stopped unexpectedly"
+并弹崩溃窗——2026-11-17 的反复重启就是这么来的。本仓库刻意不再提供任何这样的脚本。
 
 ## 自检
 
@@ -267,7 +304,7 @@ plugin_manager install_bundle target=/Users/naskita/Documents/deepseek-harness/d
 
 ```bash
 node build.mjs                                        # 模板 → lib/client.js
-node --test tests/*.test.mjs                          # 15 项单测（client + host + markdown）
+node --test tests/*.test.mjs                          # 21 项单测（client + host + markdown）
 node tests/send-path.cjs lib/client.js                # 22 项发送链路断言
 node tests/list-slots.cjs lib/client.js               # 打印注册了哪些槽位
 ```
