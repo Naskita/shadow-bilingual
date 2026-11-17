@@ -22,22 +22,42 @@ set -u
 WAIT="${1:-30}"
 REPORT=/tmp/shadow-restart-report.json
 APP="/Applications/DeepSeek Harness.app"
-URL=http://127.0.0.1:55443
+# 端口每次启动都可能变（历史值见过 55443 / 65285），所以不写死：
+# 从宿主进程实际监听的 TCP 端口里认。
+# 注意：pgrep -f 在这台机器上匹配不到宿主（命令行超过 pgrep 的匹配长度，
+# 且路径里带空格）。实测唯一可靠的是 ps + grep。
+find_host_pid() {
+  ps ax -o pid=,command= 2>/dev/null \
+    | grep 'dsh-desktop-host/lib/index.js' \
+    | grep -v 'grep' \
+    | awk '{ print $1 }' \
+    | head -1
+}
+
+detect_port() {
+  local pid="$1"
+  [ -n "$pid" ] || return 1
+  lsof -nP -iTCP -sTCP:LISTEN -a -p "$pid" 2>/dev/null \
+    | awk 'NR>1 { n=split($9, a, ":"); print a[n] }' \
+    | sort -u | head -1
+}
 
 sleep "$WAIT"
 
 probe() {  # $1 = path -> 打印 HTTP 状态码
+  [ -n "${URL:-}" ] || { echo 000; return; }
   curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$URL$1" 2>/dev/null || echo 000
 }
 
-OLD_PID="$(pgrep -f 'dsh-desktop-host/lib/index.js' | head -1)"
+OLD_PID="$(find_host_pid)"
+URL=""
 
 # 1) 先请应用正常退出，让它把会话落盘
 osascript -e 'quit app "DeepSeek Harness"' >/dev/null 2>&1
 
 for _ in $(seq 1 20); do
   sleep 1
-  pgrep -f 'dsh-desktop-host/lib/index.js' >/dev/null 2>&1 || break
+  [ -n "$(find_host_pid)" ] || break
 done
 
 # 2) 还没退干净就强杀宿主
@@ -49,15 +69,26 @@ fi
 # 3) 重新打开
 open -a "$APP" >/dev/null 2>&1
 
-# 4) 等宿主把 HTTP 端口拉起来，再探两条路由
+# 4) 等宿主起来，自动认出端口，再探两条路由
 NEW=000
+NEW_PID=""
+PORT=""
 for _ in $(seq 1 60); do
   sleep 2
+  NEW_PID="$(find_host_pid)"
+  [ -n "$NEW_PID" ] || continue
+  PORT="$(detect_port "$NEW_PID")"
+  [ -n "$PORT" ] || continue
+  URL="http://127.0.0.1:$PORT"
   NEW="$(probe /api/shadow-bilingual/health)"
   [ "$NEW" = "200" ] && break
 done
 
 OLD="$(probe /api/dsh-bilingual-en/health)"
+# 新宿主代码的标志：/config 里必须出现 localLanguage
+HAS_LANG="$(curl -s --max-time 3 "$URL/api/shadow-bilingual/config" 2>/dev/null \
+  | grep -c '"localLanguage"')"
 
-printf '{"at":"%s","oldHostPid":"%s","newRouteHttp":"%s","oldRouteHttp":"%s"}\n' \
-  "$(date -u +%FT%TZ)" "$OLD_PID" "$NEW" "$OLD" > "$REPORT"
+printf '{"at":"%s","oldHostPid":"%s","newHostPid":"%s","port":"%s","newRouteHttp":"%s","oldRouteHttp":"%s","hasLocalLanguage":%s}\n' \
+  "$(date -u +%FT%TZ)" "$OLD_PID" "$NEW_PID" "$PORT" "$NEW" "$OLD" \
+  "$([ "${HAS_LANG:-0}" -gt 0 ] && echo true || echo false)" > "$REPORT"
