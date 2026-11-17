@@ -149,7 +149,7 @@ Individually:
 
 ```bash
 node build.mjs                                        # template → lib/client.js
-node --test tests/*.test.mjs                          # 21 unit tests (client + host + markdown)
+node --test tests/*.test.mjs                          # 22 unit tests (client + host + markdown)
 node tests/send-path.cjs lib/client.js                # 22 send-path assertions
 node tests/list-slots.cjs lib/client.js               # which slots got registered
 ```
@@ -304,7 +304,7 @@ plugin_manager install_bundle target=/Users/naskita/Documents/deepseek-harness/d
 
 ```bash
 node build.mjs                                        # 模板 → lib/client.js
-node --test tests/*.test.mjs                          # 21 项单测（client + host + markdown）
+node --test tests/*.test.mjs                          # 22 项单测（client + host + markdown）
 node tests/send-path.cjs lib/client.js                # 22 项发送链路断言
 node tests/list-slots.cjs lib/client.js               # 打印注册了哪些槽位
 ```

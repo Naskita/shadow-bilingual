@@ -533,3 +533,75 @@ test('英文段落里夹一句中文引用时仍然要翻', async () => {
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+
+test('中文句子夹英文标识符、目标是英文时仍然要翻', async () => {
+  // 回归（2026-11-18）：用户打「帮我装插件hermes-loop」按 Enter 发不出去。
+  // 宿主旧判据 latinDominant 只看拉丁字母数量：hermes-loop 贡献 10 个字母、
+  // 汉字 5 个（10 >= 5*1.5）→ 判「已经是英文」→ 原样退回，客户端拿到
+  // 「译文 == 原文」判无效，发送闸门每按一次 Enter 就重翻一次、永远发不出去。
+  const home = mkdtempSync(path.join(tmpdir(), 'shadow-bilingual-ident-'))
+  const previousHome = process.env.DSH_HOME
+  const previousKey = process.env.DEEPSEEK_API_KEY
+  delete process.env.DEEPSEEK_API_KEY
+  process.env.DSH_HOME = home
+
+  let handler = null
+  const ctx = {
+    webServer: {
+      register(options) {
+        handler = options.handler
+      },
+    },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+  }
+
+  const chineseWithIdentifier = '帮我装插件hermes-loop'
+  const translated = 'Help me install the hermes-loop plugin.'
+  // 已经是英文正文的混排段落：目标是英文时必须原样通过，不能再浪费一次请求。
+  const alreadyEnglish = 'The crash dialog showed the string 应用无法启动或已意外停止, which came from the host stderr tail.'
+
+  const originalFetch = globalThis.fetch
+  let requests = 0
+  globalThis.fetch = async (_url, options) => {
+    requests += 1
+    const items = JSON.parse(JSON.parse(options.body).messages[1].content).items
+    const content = JSON.stringify({ items: items.map((item) => ({ id: item.id, text: translated })) })
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify({ choices: [{ message: { content } }] })
+      },
+    }
+  }
+
+  try {
+    const mod = await import('../lib/index.js')
+    mod.apply(ctx)
+    await call(handler, 'POST', '/config', { apiKey: 'sk-ident-1234567890' })
+
+    requests = 0
+    const result = await call(handler, 'POST', '/translate', {
+      items: [
+        { id: 1, text: chineseWithIdentifier, target: 'en' },
+        { id: 2, text: alreadyEnglish, target: 'en' },
+      ],
+    })
+    assert.equal(result.status, 200)
+    assert.equal(requests, 1, '中文夹标识符必须交给模型；已经是英文的段落不该再消耗请求')
+    assert.equal(result.json.items.length, 2)
+    assert.equal(result.json.items[0].text, translated, '不能把原样退回当中文句子的英文译文')
+    assert.equal(result.json.items[1].text, alreadyEnglish)
+  } finally {
+    try {
+      if (handler !== null) await call(handler, 'POST', '/config', { apiKey: '' })
+    } catch {
+      // 清理失败不影响测试结论
+    }
+    globalThis.fetch = originalFetch
+    process.env.DSH_HOME = previousHome
+    if (previousKey !== undefined) process.env.DEEPSEEK_API_KEY = previousKey
+    rmSync(home, { recursive: true, force: true })
+  }
+})

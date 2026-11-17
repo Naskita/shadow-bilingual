@@ -481,5 +481,39 @@ node tests/send-path.cjs lib/client.js
 - 退出码 `1` → 构建或自检失败，先修再谈生效。
 
 **同步改动**：README 两节都改掉了「宿主侧改动需要重装」的旧说法（实测重装不会重新 import
-宿主模块），并写清「绝不 kill 宿主」；自检项数 `15` → `21`；`package.json` 增加
+宿主模块），并写清「绝不 kill 宿主」；自检项数 `15` → `22`；`package.json` 增加
 `npm run apply` / `npm run check` 两个入口，方便 Agent 记住一条命令。
+
+## D16：译文不可用必须按失败处理，宿主的「已经是英文」不能只看拉丁字母数量（2026-11-18 凌晨）
+
+**现场**：用户单独发「帮我装插件hermes-loop」按 Enter 毫无反应，草稿一直留在框里。
+
+**根因（两层，同一句话上叠加）**：
+1. 宿主 `alreadyInTarget(text, 'en')` 用的是 `latinDominant()`：`latin >= foreign * 1.5`。
+   这句话 latin 10（`hermes-loop`）、foreign 5（帮我装插件）→ 10 ≥ 7.5 → 判「已经是英文」
+   → `translateItems` 把它塞进 `passthrough`，原样退回。
+2. 客户端 `translateLooksValid()` 把「译文 == 原文」判为无效（这是对的），于是
+   `usableEnglish()` 为假，`shadowRefresh` 走 `!usableEnglish` 分支：`phase = 'idle'`、
+   **`error = ''`**。`gateSend()` 的逃生阀是 `shadow.error !== '' && sameDraft(...)`，
+   error 为空永远不成立，于是落回最后一段「idle + 含中文」→ 再拦一次、再翻一次、
+   再拿回同一段原文。**每次 Enter 都被吞，消息永远发不出去**。
+
+**决定**：
+- 客户端：`!usableEnglish` 分支按失败处理——`shadow.error = '无法生成英文改写，将按原文发送'`
+  + `clearPendingSubmit()`。面板显示「翻译失败，将发送原文」，再按一次 Enter 走原生提交。
+  「卡住」永远比「发原文」糟糕。
+- 宿主：新增 `looksEnglish()`——先要求 `latin >= 2`；纯拉丁文本（`foreign === 0`）直接放过；
+  含中日韩文字时必须再命中 **≥2 个英语虚词**且 `latinDominant` 才判「已是英文」。
+  虚词表 `ENGLISH_HINTS` 与 `lib/markdown.cjs` 同一份（约 100 个，不含单字母 a/i）。
+  display 目标 `zh` 的 0.3 占比判据**不动**（保住「中文夹 localLanguage 标识符」不送翻）。
+
+**验证**：
+- `tests/send-path.cjs` 新增 `translateMode = 'echo'`（原样退回）+ 场景 4c：
+  译文==原文时第二次 Enter 必须放行（修前 FAIL，修后 PASS，24/24）。
+- `tests/host.test.mjs` 新增「中文句子夹英文标识符、目标是英文时仍然要翻」：
+  `帮我装插件hermes-loop` 必须发出请求并换成英文；同时断言已经是英文的混排段落仍走 passthrough。
+- `bash tests/run-all.sh` → build、22 单测、发送链路 24/24、槽位 6 项全过。
+
+**生效方式**：客户端改动热载；宿主改动需要正常退出重开（⌘Q 后重开，**不要** kill）。
+在重开之前，客户端修复已经能让这句发出去（第一次 Enter 后提示「翻译失败，将发送原文」，
+再按一次即发原文）。

@@ -133,7 +133,10 @@ const fetchStub = (url, opts) => {
     if (translateMode === 'hang') return new Promise(() => {})
     const body = JSON.parse(opts.body)
     lastContext = body.context || ''
-    const items = body.items.map((it) => ({ id: it.id, text: 'Hello world, this is English.' }))
+    // echo：宿主误判「原文已经是英文」时的真实表现——原样退回，不报错。
+    const items = translateMode === 'echo'
+      ? body.items.map((it) => ({ id: it.id, text: it.text }))
+      : body.items.map((it) => ({ id: it.id, text: 'Hello world, this is English.' }))
     const payload = JSON.stringify({ items })
     return Promise.resolve({
       ok: true, status: 200,
@@ -250,6 +253,19 @@ async function main() {
   check('翻译失败不吞消息（放行原文）', submitCount === 0, 'submit=' + submitCount)
   const ev4b = pressEnter()
   check('失败后再次 Enter 放行给原生提交', ev4b._prevented === false, 'prevented=' + ev4b._prevented)
+
+  // --- 场景 4c：译文与原文一模一样（宿主误判「已经是英文」）→ 不能永久吞掉消息 ---
+  setDraftCalls = []
+  submitCount = 0
+  translateCalls = 0
+  translateMode = 'echo'
+  activeEl = makeEditable('帮我装插件hermes-loop')
+  pressEnter()
+  await sleep(400)
+  check('译文==原文时不假装已发送', submitCount === 0, 'submit=' + submitCount)
+  const ev4c = pressEnter()
+  check('译文不可用后再次 Enter 放行原文', ev4c._prevented === false, 'prevented=' + ev4c._prevented)
+  translateMode = 'ok'
 
   // --- 场景 5：翻译挂起 → 不能卡死；译文回来后自动发 ---
   setDraftCalls = []
