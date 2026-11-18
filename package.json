@@ -30,12 +30,13 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
-    "scripts",
-    "docs",
+    "lib/client.js",
+    "lib/index.js",
+    "lib/markdown.cjs",
     "cordis.patch.yml",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20",
