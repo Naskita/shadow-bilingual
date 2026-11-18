@@ -716,3 +716,64 @@ node tests/send-path.cjs lib/client.js
 
 **教训**：涉及受控组件的路径，**只能用模拟测试验证「事件有没有被吞」，不能验证「发出去的是什么」**——
 后者取决于应用自己的 state。要验内容，必须把「应用从 state 提交」这件事建模进去。
+
+## D24 视口自己往回跳：是 `flushSample` 把「跟随」关掉了（2026-11-18）
+
+**现象**：对话进行中，视口自己往回跳几个来回；鼠标刚滚上去时也会。
+
+**探测数据**（`lib/scroll-probe.template.js`，用户点了两次「滚动诊断」，334 条事件）：
+
+```
+intents: 182   (wheel 106 / pointerdown 26 / keydown 50)
+tailFlips:
+  seq 3    false -> true   kind scroll
+  seq 22   true  -> false  kind intent type wheel
+  seq 66   false -> true   kind scroll
+  seq 77   true  -> false  kind tick          <-- 没有任何用户输入
+  seq 265  false -> true   kind intent type wheel
+maxGapAtIntent: 5705
+```
+
+**关键发现**：`seq 77` 那个 `true -> false` 的 `kind` 是 **`tick`**——不是滚轮、不是点击。
+也就是说「跟随」是被**应用自己的采样定时器**关掉的，不是用户的阅读意图关掉的。
+之前我给的「唯一关闭路径是 `interruptFollow`」的结论是**错的**：它只是其中一条路径。
+
+**真正的代码路径**（`@deepseek-ai/dsh-client-ui-chat/lib/client.js`，解包在 `/tmp/asarx/chat.client.js`）：
+
+```js
+flushSample = () => {
+  if (!this.pending) return
+  this.cancelPending()
+  const scroll = this.viewport.readScroll()
+  if (scroll === null) return
+  const followingTail = this.follow.sample(scroll.metrics, scroll.movedByReader)
+  let position = null
+  if (!scroll.movedByReader && followingTail) this.followTail()
+  else { ...; this.publish({ initialized: true, followingTail, activeTurn }) }
+  this.sampled?.(...)
+}
+
+sample(metrics, movedByReader = this.sampledTop === undefined || Math.abs(metrics.top - this.sampledTop) > .5) {
+  this.sampledTop = metrics.top
+  if (!this.animating && movedByReader) this.following = this.nearBottom(metrics)  // 只在「离底 <=25px」时才算跟随
+  return this.active
+}
+```
+
+`onScroll` 里：只要 `movedByReader` 为真且离底 ≥1px，就把 `this.sampleTimer ??= setTimeout(this.flushSample, 500)`；
+500ms 后 `flushSample` 调 `sample()`，把 `following` **重算成 `nearBottom()` 的结果**——
+内容还在流式增长时 `scrollTop` 几乎不动，于是 `movedByReader` 由**内容变高**（而非用户滚动）置真，
+`nearBottom` 为假 → 跟随被关 → `publish({followingTail:false})` → 就是那个 `kind: tick` 的翻转。
+
+**为什么 1.0.9 之前没这么明显**：`maxGapAtIntent: 5705` 说明用户确实在离底很远时滚过，
+但即便如此，`nearBottom` 用的是**绝对 25px 阈值**，流式增长期间每一帧都可能越过它。
+
+**修法方向**（未实施，需要用户确认）：
+这是 shell 的行为（`dsh-client-ui-chat`），直接改会被升级覆盖。可选：
+① 插件侧兜底：监听 `data-chat-following-tail` 消失 + 无用户意图 → 强制 `scrollTop = scrollHeight`（会抢用户滚动，风险高）；
+② 提交上游 / patch shell，把 `flushSample` 的 `movedByReader` 判据改成「只认真实用户滚动」（`scrollend` 或 `wheel` 标记），
+   并让 `nearBottom` 阈值随视口高度缩放而不是固定 25px；
+③ 先只保留探测，继续观察。
+
+**教训**：`maxGapAtIntent: 5705` 一开始让我以为是「用户滚远后跟随被关」，但 `tailFlips` 里
+`kind: tick` 的那一条才是根因证据。**看聚合量会误导，必须看翻转点的 `kind`。**
