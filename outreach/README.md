@@ -58,3 +58,13 @@ git push
 - 分类选 `ui`（显示侧改造）；`usage` 更偏用量面板，`tools` 是工具类，都不如 `ui` 贴。
 - 条目不含 `tarball:`——仓库能从源码安装（`dsh plugin add` 走 git）。
 - 没有发 npm 包；这不影响收录。
+
+## 已提交（2026-11-18）
+
+- PR：https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/16677
+- 分支：`Naskita:add-shadow-bilingual`（base `main`）
+- 改动：3 个文件 +9 行（条目 yml 7 行 + 两个 README 各 1 行）
+- 状态：`MERGEABLE`，Submission gate 排队中
+
+后续若被打回，反馈会以 PR 评论给出；在**同一分支**推送修复即可，不需要重开 PR。
+被要求修改时会打 `held: author` 标签——那不是拒绝，是暂停等待重读。
