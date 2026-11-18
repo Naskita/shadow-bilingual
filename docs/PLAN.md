@@ -685,3 +685,34 @@ node tests/send-path.cjs lib/client.js
 **验证**：`tests/host.test.mjs` 新增 `英文译文里出现 me / no 这类共用词时不能判成西语`；
 真实 API 探针四条全 200（中文→英、长句中文→英、英→西、中文夹标识符原样）。
 **版本**：1.0.7。
+
+## D23：首屏发送其实是中文——DOM 兜底从根上行不通（2026-11-18 上午）
+
+**症状**（用户截图 + 口述）：新会话首屏输入「早上好！」，影子已经显示 `Good morning!`；
+点发送 → 会话里发出去的是**中文**「早上好！」，不是英文。再点也没有改观。
+
+**根因**（两处叠加）：
+
+1. `composerBridge.actions` 只由 `conversation.composer.dock` 的 `LiveTranslationPanel`
+   从 `props.inputActions` 写入。首屏没有这个插槽 → actions 永远是 null → 走 DOM 兜底。
+2. DOM 兜底从设计上就不成立：`execCommand('insertText')` 只改 DOM 文本，
+   而应用提交时读的是**它自己的 React state**（仍是中文）。于是「写英文 → 点发送」
+   点的是中文草稿，发出去的就是中文。D21 记的修法（1.0.5/1.0.6）建立在这个错误假设上，
+   所以首屏从来没真正发过英文——只有模拟测试因为不模拟 state 而一路 PASS。
+
+**关键证据**：`/tmp/gate-order.cjs` 把应用建模成「submit 读自己的 state」后，
+原版 1.0.8 在首屏路径输出 `submittedText="早上好！"`（复现用户截图），
+改了喂 bridge 的方式后同一场景输出 `submittedText="Good morning!"`。
+
+**修法**：
+
+1. 新增 `captureInputActions(props)`；`SendToggle`（住在 `conversation.input.left`，
+   **首屏就有**，且带 `inputActions`）与 `LiveTranslationPanel` 都往 `composerBridge.actions` 喂。
+   voice-mode 的麦克风按钮就是从 `conversation.input.right` 这样拿到 actions 的，照抄这条既定契约。
+2. `writeEditorText()` 写完**回读校验**，不再是 `execCommand` 返回 true 就当成功。
+3. `heroFallbackBroken` 布尔量改成 `heroFallbackBrokenUntil`（带冷却），不再一次失败永久退化。
+4. 拦截器不再吞自己合成的点击（`replayingSend`），也不接管 `isTrusted === false` 的点击。
+5. 回归测试：`tests/send-path.cjs` 新增场景 1c（首屏工具行带 actions → 必须发英文、不发中文）。
+
+**教训**：涉及受控组件的路径，**只能用模拟测试验证「事件有没有被吞」，不能验证「发出去的是什么」**——
+后者取决于应用自己的 state。要验内容，必须把「应用从 state 提交」这件事建模进去。

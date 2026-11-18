@@ -1,4 +1,24 @@
 # Changelog
+## [1.0.9] — 2026-11-18
+
+### Fixed
+
+- **The first message in a new conversation was sent in Chinese even though the English shadow was
+  showing.** The plugin only ever learned the composer's `inputActions` from the
+  `conversation.composer.dock` panel, which does not exist on the new-conversation screen. Without it,
+  sending fell back to writing the English into the DOM — but the app submits from its own React state,
+  which still held the Chinese, so the Chinese went out. The `conversation.input.left` tool row is
+  present on that screen and does receive `inputActions`, so it now feeds the bridge too. This removes
+  the DOM-only path as a correctness dependency.
+- `writeEditorText()` now reads the editor back after writing and reports failure when the text did not
+  actually change, instead of trusting `execCommand`'s return value (Lexical repaints from its own
+  state, so a DOM-only write can be wiped).
+- The "stop trying the hero fallback" flag was permanent after a single failure, which made every later
+  attempt skip the fallback and release the original text. It now expires after a short cooldown.
+- Synthetic clicks (`button.click()`) are no longer intercepted by the plugin's own capture-phase
+  handler, and clicks the plugin did not originate (`isTrusted === false`) are never taken over — either
+  case previously swallowed the send.
+
 ## [1.0.8] — 2026-11-18
 
 ### Fixed

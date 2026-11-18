@@ -22,10 +22,15 @@ const docListeners = []
 let activeEl = null
 
 function makeEditable(text) {
+  // 模拟真实编辑器：写 textContent / execCommand 都要真的改掉文本，
+  // 否则「写完回读」的校验会（正确地）判定写入失败。
   const el = {
     tagName: 'DIV',
-    innerText: text,
-    textContent: text,
+    _text: text,
+    get innerText() { return this._text },
+    set innerText(v) { this._text = v },
+    get textContent() { return this._text },
+    set textContent(v) { this._text = v },
     classList: { contains: () => false },
     getAttribute: () => null,
     focus() {},
@@ -45,6 +50,17 @@ const doc = {
   querySelector: () => null,
   querySelectorAll: (sel) => (sel === 'button' ? (doc.__buttons || []) : []),
   __buttons: [],
+  // 编辑器写入路径会用到的浏览器 API：模拟「insertText 真的改文本」。
+  set __pendingText(v) { this.__pending = v },
+  execCommand(cmd, ui, value) {
+    if (cmd === 'insertText') {
+      const focused = activeEl
+      if (focused && 'textContent' in focused) focused.textContent = value
+      return true
+    }
+    return false
+  },
+  createRange: () => ({ selectNodeContents() {} }),
   addEventListener: (t, f) => docListeners.push([t, f]),
   removeEventListener: (t, f) => {
     const i = docListeners.findIndex((e) => e[0] === t && e[1] === f)
@@ -62,6 +78,7 @@ const storage = {
 // ---------------- 可观察的 inputActions ----------------
 let setDraftCalls = []
 let submitCount = 0
+let heroSubmitted = ''
 
 function makeActions() {
   return {
@@ -93,6 +110,7 @@ g.MutationObserver = class { observe() {} disconnect() {} }
 g.addEventListener = () => {}
 g.removeEventListener = () => {}
 g.devicePixelRatio = 1
+g.getSelection = () => ({ removeAllRanges() {}, addRange() {} })
 g.__ModuleLoader__ = { load: (def) => loaded.push(def) }
 
 const effectCleanups = []
@@ -236,6 +254,47 @@ async function main() {
   const panel = slots.find((s) => s.decl && s.decl.name === 'conversation.composer.dock')
   if (!panel) { console.error('找不到 composer.dock 面板槽位'); process.exit(1) }
   const actions = makeActions()
+  panel.comp({ inputActions: actions, useInput: (sel) => sel({ draft: '' }) })
+
+  // --- 场景 1c（回归）：首屏工具行带 inputActions 时，必须发英文，不能发中文 ---
+  //
+  // 这是用户 2026-11-18 报的「点一下翻译、再点一下把中文发出去了」。
+  // 根因：只有 conversation.composer.dock 会喂 composerBridge.actions，而首屏没有它，
+  // 于是走 DOM 兜底 —— execCommand 只改 DOM，应用提交时读的是自己的 state（中文）。
+  // 修法：conversation.input.left 的工具行在首屏就带 inputActions，由它接管喂 bridge。
+  {
+    const toggle = slots.find((s) => s.decl && s.decl.name === 'conversation.input.left')
+    check('注册了 conversation.input.left（首屏工具行）', !!toggle)
+    let heroState = '首屏中文草稿'
+    const heroActions = {
+      getDraft: () => heroState,
+      setDraft: (t) => { heroState = t },
+      submit: () => { submitCount += 1; heroSubmitted = heroState; heroState = '' },
+      insertText() {}, insertQuote() {}, captureInsertion: () => null, persistDraft() {},
+      addAttachments() {}, removeAttachment() {}, pruneAttachments() {},
+    }
+    if (toggle && toggle.comp) {
+      toggle.comp({ inputActions: heroActions, useInput: (sel) => sel({ draft: heroState }) })
+    }
+    submitCount = 0
+    heroSubmitted = ''
+    translateCalls = 0
+    translateMode = 'ok'
+    const heroEditor2 = makeEditable('首屏中文草稿')
+    activeEl = heroEditor2
+    doc.__buttons = []
+    const evHero = pressEnter()
+    await sleep(500)
+    check('首屏有 actions：拦下这一次（不发中文）', evHero._prevented === true, 'prevented=' + evHero._prevented)
+    check('首屏有 actions：提交的是英文译文', /[A-Za-z]/.test(heroSubmitted) && heroSubmitted.indexOf('首屏') === -1,
+      'submitted=' + JSON.stringify(heroSubmitted))
+    check('首屏有 actions：中文原文没有被发出去', heroSubmitted !== '首屏中文草稿', 'submitted=' + JSON.stringify(heroSubmitted))
+    // 首屏工具行的 actions 会一直占着桥（这个假 React 不跑 effect cleanup），
+    // 所以下面的场景 2 会重新挂一次 dock 面板把桥抢回来。
+  }
+
+  // 场景 1c 把首屏工具行的 actions 喂进了桥；重新挂一次 dock 面板把桥抢回来，
+  // 让后面的场景仍按「会话已建立、由 composer.dock 接管」来跑。
   panel.comp({ inputActions: actions, useInput: (sel) => sel({ draft: '' }) })
 
   // --- 场景 2：首次 Enter → 先拦下，译文就绪后自动发一次英文 ---
