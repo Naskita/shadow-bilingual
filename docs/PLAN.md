@@ -717,6 +717,34 @@ node tests/send-path.cjs lib/client.js
 **教训**：涉及受控组件的路径，**只能用模拟测试验证「事件有没有被吞」，不能验证「发出去的是什么」**——
 后者取决于应用自己的 state。要验内容，必须把「应用从 state 提交」这件事建模进去。
 
+## D25 — 插件市场发布走 release 分支（2026-11-18）
+
+**决定**：market-index.json 的 git 源指向 `release` 分支的 orphan commit，不指向 master。
+
+**理由**：pnpm 对 git 依赖**不应用** `package.json` 的 `files` 字段，这是 npm pack 才有的过滤。
+指向 master 会把 `docs/`（含 `dsh-follow-patch.md`——记录如何给 vendor 的 `app.asar` 打补丁）、
+`tests/`、`patch/`、`build.mjs` 一起装到用户机器上，3.4MB，且含不该外发的物料。
+实测：master 克隆 3.4MB，release 分支克隆 484KB、8 个文件。
+
+**为什么不选 npm**：需要账号和发布令牌；且 commit SHA 比 semver 版本更硬——npm 在 72 小时内
+允许同版本重发，commit 无法被重指。代价是每次 master 改动都要重跑
+`scripts/release-branch.mjs` 并重推 release（快照不会自动跟随）。
+
+**实现**：`scripts/release-branch.mjs` —— 构建 → 跑 tests（必须「全部通过」）→ 组装 8 个运行时
+文件 → 在临时仓库做 orphan commit → 把对象文件搬进当前仓库 objects/（`git fetch <工作仓库>`
+不可用，对方不是上传端点）→ `update-ref refs/heads/release`。`--push` 才推远端。
+脚本只写 `.release-spec.txt`，**不自动改 market-index.json**：构建是本地动作、可反复重跑，
+改 index 是对外宣告版本，应单独提交。
+
+**索引校验**：用 app.asar 里的真校验器 `@deepseek-ai/dsh-plugin-market-index`（需替换其
+`import semver`），`parseMarketIndex` → `VALIDATED OK`，`marketInstallTarget` 产出
+`git+https://...#<release-sha>`。
+
+**图标**：release 分支不含 `docs/icon.png`，index 的 icon 指向 master 的 raw.githubusercontent
+绝对 URL，否则装完看不到图标。
+
+**流程说明**：`docs/release.md`。
+
 ## D24 视口自己往回跳：是 `flushSample` 把「跟随」关掉了（2026-11-18）
 
 **现象**：对话进行中，视口自己往回跳几个来回；鼠标刚滚上去时也会。
