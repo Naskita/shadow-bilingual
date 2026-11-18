@@ -15,7 +15,7 @@
         "en": "English-only conversation with the model, bilingual display for you: shadow English in the composer, and a local-language line under each reply block.",
         "zh": "用英文与模型对话，面向你双语显示：输入框实时显示英文影子译文，助手每段英文下方追加你的语言对照。"
       },
-      "icon": "https://raw.githubusercontent.com/Naskita/shadow-bilingual/bfff20a41025ea446846fb8a95f34c5f68fe01d7/docs/icon.png",
+      "icon": "https://raw.githubusercontent.com/Naskita/shadow-bilingual/master/docs/icon.png",
       "author": "Naskita",
       "homepage": "https://github.com/Naskita/shadow-bilingual",
       "repository": {
@@ -29,7 +29,7 @@
           "source": {
             "type": "git",
             "url": "https://github.com/Naskita/shadow-bilingual",
-            "commit": "bfff20a41025ea446846fb8a95f34c5f68fe01d7"
+            "commit": "f2441167f3e9b840bd4b492626c42cc1dd739d2c"
           },
           "engines": {
             "dsh": ">=0.2.1-rc.1 <0.3.0-0"

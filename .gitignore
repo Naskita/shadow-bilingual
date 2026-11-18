@@ -6,3 +6,6 @@ _scratch/
 .DS_Store
 Thumbs.db
 .dsh-project-memory/
+
+# release-branch.mjs 的输出
+.release-spec.txt
