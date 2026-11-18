@@ -1,0 +1,21 @@
+{
+  "id": "shadow",
+  "name": "影译 · Shadow Bilingual",
+  "blurb": "给 DSH 用的影子双语插件：你用母语写，发出去之前先译成英文——输入框、插话框、消息队列三条路径都拦住；模型只读英文。助手英文回复下方再追加你选的本地语言对照，支持 18 种显示语言。",
+  "facts": [
+    {
+      "value": "3",
+      "label": "条发送路径拦截"
+    },
+    {
+      "value": "18",
+      "label": "种显示语言"
+    },
+    {
+      "value": "DeepSeek",
+      "label": "翻译"
+    }
+  ],
+  "url": "https://github.com/Naskita/shadow-bilingual",
+  "private": false
+}
