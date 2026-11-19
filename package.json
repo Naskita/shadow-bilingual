@@ -1,0 +1,58 @@
+{
+  "name": "shadow-bilingual",
+  "version": "1.0.13",
+  "type": "module",
+  "description": "你用母语写，AI 只读英文：输入时在草稿下方实时预览英文译文，发送时自动译成英文发出；助手的英文回复会在每段下方附上你的母语对照，支持 18 种语言。Write in your own language while the AI works in English — live shadow English preview and auto-translate on send, with per-paragraph translations in 18 display languages.",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "bilingual",
+    "translation",
+    "shadow-input",
+    "english-mode",
+    "英文",
+    "双语",
+    "英译"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Naskita/shadow-bilingual.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Naskita/shadow-bilingual/issues"
+  },
+  "homepage": "https://github.com/Naskita/shadow-bilingual#readme",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/client.js",
+    "lib/index.js",
+    "lib/markdown.cjs",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.1 <0.3.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
+    }
+  },
+  "license": "MIT"
+}
