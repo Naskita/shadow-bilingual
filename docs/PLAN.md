@@ -805,3 +805,33 @@ sample(metrics, movedByReader = this.sampledTop === undefined || Math.abs(metric
 
 **教训**：`maxGapAtIntent: 5705` 一开始让我以为是「用户滚远后跟随被关」，但 `tailFlips` 里
 `kind: tick` 的那一条才是根因证据。**看聚合量会误导，必须看翻转点的 `kind`。**
+
+## D26 — HTTP 路由没有访问检查：任意网页都能改写 baseURL（2026-11-19）
+
+**发现途径**：不是自查出来的，是 awesome-dsh-plugin 的维护者 `fkysly` 在合并 PR #16677 时读代码发现的。
+他把这句写进了条目描述（中英文各一句），并给了修法。这是我该在发布前自己抓到的缺陷。
+
+**问题**：`lib/index.js` 的 `ctx.webServer.register` 路由从未调用 `ctx.connection.requestRejection(req)`，
+而 DSH 正是靠它区分「已授权的浏览器会话」和「随便一个网页」。
+
+**危害（比信息泄露严重）**：`POST /config` 接受 `baseURL`。攻击者只需两步：
+1. 在你开着的任意网页里对 `http://127.0.0.1:<port>/api/shadow-bilingual/config` 发 `POST`，把 `baseURL` 改成自己的域名；
+2. 等你下次翻译，插件就会把 **API Key** 发到那个域名。
+另有 `POST /translate`、`POST /test` 可白嫖 Key 消耗，`GET /config` 泄露 `configPath` 绝对路径。
+
+**已复现**：在 1.0.9 实跑上一个跨域 `POST /config`，`baseURL` 变成 `https://attacker.example.com` 且响应回显。
+（复现后立刻改回 `https://api.deepseek.com` 并核对落盘配置。）
+
+**修法（1.0.10）**：handler 里任何路由分发**之前**先过 `requestRejectionOf(ctx, req)`；`inject` 加 `connection`；
+403 回 `FORBIDDEN`；`GET /health` 增加 `guard: true|false`，宿主没提供 `connection` 时自报降级，
+避免「静默退回不设防」。
+
+**验证**：`tests/guard.test.mjs` 四例；先移除 guard 验证过，两个安全用例在修复前失败、修复后通过
+（不是「怎么改都绿」的假测试）。
+
+**教训**：
+1. 发布前除了验「功能对不对」，还要验「对外暴露面在不在宿主的权限模型里」。我此前只验了发送链路、
+   槽位、翻译，从没问过「这些 HTTP 路由谁可以调」。
+2. 修完必须**先证伪**：把修复拿掉，测试要能红。这次做到了，才敢说修好。
+3. 复现漏洞时优先用**不起副作用的读**；本次因为线上跑的是旧代码、只能靠写接口复现，
+   所以复现后必须立刻还原并核对落盘配置。
