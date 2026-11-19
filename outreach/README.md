@@ -68,3 +68,23 @@ git push
 
 后续若被打回，反馈会以 PR 评论给出；在**同一分支**推送修复即可，不需要重开 PR。
 被要求修改时会打 `held: author` 标签——那不是拒绝，是暂停等待重读。
+
+## 已合并 + review 反馈（2026-11-18）
+
+- PR #16677 **已合并**（2026-11-18 16:52Z，merge commit `ba6f68ee8c8d5726be057f53efbbad15710835d8`），两个 check 都 SUCCESS。
+- 维护者 `fkysly` 在合并时核了代码，指出：本插件的 `webServer.register` 路由**没有走 DSH 的访问检查**
+  （`ctx.connection.requestRejection(req)`），并**把这句话补进了条目描述**（中英文各一句）。
+- 这条是真的，而且比「信息泄露」严重：`POST /config` 接受 `baseURL`，任意网页把端点改指到攻击者域名后，
+  下一次翻译就会把用户的 API Key 发过去。已在 1.0.9 上**实时复现**（跨域 `POST /config` 把 baseURL 改成
+  `https://attacker.example.com`，响应原样回显）。
+
+## 修复与后续 PR（2026-11-19）
+
+- 1.0.10：所有请求在分发任何路由**之前**先过 `requestRejection`；`inject` 加 `connection`；
+  403 回 `FORBIDDEN` 而不是被吞成通用错误；`GET /health` 增加 `guard: true|false`，
+  宿主没给 `connection` 时自报降级。
+- `tests/guard.test.mjs` 四个用例，其中两个安全用例**在修复前的 handler 上失败、修复后通过**
+  （先去掉 guard 验证过，确认有区分力）。
+- release 分支 commit `96ce7a77e3a098df6e5b11a343bbc94032940098`；`market-index.json` 指向同一 commit。
+- 后续 PR（删掉描述里那句免责声明）：https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/16746
+  分支 `Naskita:remove-shadow-bilingual-disclaimer` → base `main`，3 文件 +4/-4，状态 OPEN / MERGEABLE。
