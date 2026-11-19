@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.12] — 2026-11-19
+
+### Improved
+
+- **Settings UI completeness & polish:**
+  - Exposed **强制模型用英文回复** (`forceEnglish`) toggle in Settings → 双语, allowing users to enable/disable the `bilingual:response-language` system prompt section directly from the UI.
+  - Exposed **请求超时（秒）** (`timeoutMs`, 5–180s, default 60s) in the translation channel settings card.
+  - Fixed misleading status label (`关闭（默认）` → `已关闭（仅在当前标签页生效；新标签页默认开启）`), removed literal `**` markdown asterisks in plain text, and replaced the hardcoded `v1.0.0 · 本地定制版` footer with the build-injected `__SBP_VERSION__`.
+  - Fixed `sendTranslation` initialization to call `readSendTranslation()`.
+- **Backend prompt accuracy:** Included `en = natural English` in `SYSTEM_PROMPT`'s `Supported target codes` list.
+- **Descriptions:** Polished the Chinese and English product descriptions across `package.json`, `market-index.json`, and `homepage.json` for clarity.
+
 ## [1.0.11] — 2026-11-19
 
 ### Fixed
