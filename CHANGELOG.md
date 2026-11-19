@@ -1,4 +1,23 @@
 # Changelog
+## [1.0.10] — 2026-11-19
+
+### Security
+
+- **The plugin's HTTP routes had no DSH access check, so any web page open in your browser could call
+  them.** The routes were registered with `ctx.webServer.register` without consulting
+  `ctx.connection.requestRejection(req)`, which is how DSH decides whether a request came from an
+  authorized browser session. The dangerous one was `POST /config`: it accepts `baseURL`, and an
+  attacker who repointed the endpoint would receive the configured API key on the next translation.
+  `POST /translate` and `POST /test` additionally allowed spending the key on attacker-chosen text, and
+  `GET /config` disclosed the absolute config path alongside a masked key hint. Every request now passes
+  the host's rejection check before any route logic runs, and a 403 from the host is surfaced as
+  `FORBIDDEN` rather than swallowed. `inject` now declares `connection`.
+- `GET /health` reports `guard: true|false` so a host that failed to provide the `connection` service is
+  visible immediately instead of silently reverting to the unguarded behaviour.
+
+This was found by the awesome-dsh-plugin reviewer during the listing review; thanks to them for reading
+the code rather than only the manifest.
+
 ## [1.0.9] — 2026-11-18
 
 ### Fixed

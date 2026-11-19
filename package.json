@@ -1,6 +1,6 @@
 {
   "name": "shadow-bilingual",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "type": "module",
   "description": "影子双语输入 + 全英文对话：输入框实时显示英文影子译文，发送时按「发送译文」决定发译文还是原文；助手回复英文正文 + 中文对照。Shadow bilingual input for the DeepSeek Harness desktop app.",
   "keywords": [
