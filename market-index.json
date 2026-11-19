@@ -24,12 +24,12 @@
       },
       "versions": [
         {
-          "version": "1.0.9",
-          "publishTimestamp": 1795010375,
+          "version": "1.0.10",
+          "publishTimestamp": 1795049947,
           "source": {
             "type": "git",
             "url": "https://github.com/Naskita/shadow-bilingual",
-            "commit": "f2441167f3e9b840bd4b492626c42cc1dd739d2c"
+            "commit": "96ce7a77e3a098df6e5b11a343bbc94032940098"
           },
           "engines": {
             "dsh": ">=0.2.1-rc.1 <0.3.0-0"
