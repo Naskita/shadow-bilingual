@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.13] — 2026-11-19
+
+### Added
+
+- **Settings sidebar logo (`settings.section.icon`)**: Registered `ShadowLogo` SVG matching the plugin icon (`A` + `文`) alongside the renamed **影译** settings nav entry.
+- **Translation skins (`data-sbp-skin`)**: Added 5 selectable translation display skins with live preview in Settings → 影译:
+  - `quiet` (素雅 · MyTr style, default)
+  - `accent` (左侧色条)
+  - `card` (微底色块)
+  - `underline` (虚线分隔)
+  - `plain` (原样无修饰)
+
+### Improved
+
+- **Settings layout & visual polish**: Replaced harsh dark toggle buttons with pill switches, introduced a 2-column grid for the translation channel fields, refined primary button colors, and aligned the settings page title & sidebar label with **影译**.
+
 ## [1.0.12] — 2026-11-19
 
 ### Improved

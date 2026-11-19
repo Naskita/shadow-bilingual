@@ -96,6 +96,7 @@ test('client bundle loads and registers every slot', () => {
     'conversation.session.header.actions',
     'conversation.user.text.node',
     'settings.section',
+    'settings.section.icon',
   ])
 })
 

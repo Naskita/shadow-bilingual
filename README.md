@@ -5,7 +5,7 @@
 [中文](#中文) · English
 
 A DSH plugin: **English-only conversation with the model, bilingual display for you.**
-Chinese name: **影译**. Version [`1.0.12`](CHANGELOG.md).
+Chinese name: **影译**. Version [`1.0.13`](CHANGELOG.md).
 
 **Send side — the part upstream does not have.** You type your own language; the grey line under it is the English that will actually be sent, and the model never sees your language.
 

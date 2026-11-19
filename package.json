@@ -1,6 +1,6 @@
 {
   "name": "shadow-bilingual",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "type": "module",
   "description": "你用母语写，AI 只读英文：输入时在草稿下方实时预览英文译文，发送时自动译成英文发出；助手的英文回复会在每段下方附上你的母语对照，支持 18 种语言。Write in your own language while the AI works in English — live shadow English preview and auto-translate on send, with per-paragraph translations in 18 display languages.",
   "keywords": [
